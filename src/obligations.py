@@ -307,8 +307,9 @@ def validate(result, records, relationships):
 
 def run(root=ROOT):
     root = Path(root)
-    protected = sorted(p for folder in ('input', 'output/bank', 'output/events', 'output/reconciled',
-        'output/relationships', 'output/classification', 'output/audit') for p in (root / folder).rglob('*') if p.is_file())
+    protected = sorted([p for folder in ('input', 'output/bank', 'output/events', 'output/reconciled',
+        'output/relationships', 'output/classification') for p in (root / folder).rglob('*') if p.is_file()]
+        + [root / 'output/audit/coverage_audit.json'])
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected}
     def read(path):
         return json.loads((root / path).read_text(encoding='utf-8'))

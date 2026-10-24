@@ -43,6 +43,20 @@ def full_intent(note):
         re.search(r'\b(?:not fully|not repaid|partial|still owe|still owed|remaining balance|outstanding balance)\b', note))
 
 
+def scoped_full_intent(note, origin_ids, split):
+    if not split:
+        return full_intent(note)
+    if 'full settlement of all listed obligations' in note:
+        return full_intent(note)
+    # An explicit full-settlement claim in one allocation clause does not apply
+    # to every other obligation mentioned by the same bank payment.
+    for clause in note.split(';'):
+        mentioned = set(re.findall(r'\b(?:kotak|sbi)_\d{4,}\b', clause))
+        if mentioned and mentioned <= {i.lower() for i in origin_ids} and full_intent(clause):
+            return True
+    return False
+
+
 def proof(record):
     return {'transaction_id': record['bank']['transaction_id'],
             'bank_transaction_sha256': digest(record['bank']),
@@ -88,7 +102,9 @@ def assessment(origin, payments, records, as_of, unresolved=False, allow_asserti
         'outstanding_amount': None, 'status': 'UNASSESSED', 'as_of': as_of,
         'reason': 'historical_coverage_or_repayment_evidence_incomplete',
         'repayment_transaction_ids': sorted({p['repayment_transaction_id'] for p in payments}),
-        'allocation_ids': sorted(p['allocation_id'] for p in payments), 'balance_assertion': None}
+        'allocation_ids': sorted(p['allocation_id'] for p in payments), 'balance_assertion': None,
+        'repayment_evidence_strength': 'high' if payments else None,
+        'confirmation_methods': sorted({p['confirmation_method'] for p in payments})}
     if principal is None:
         result['reason'] = 'original_principal_unknown'
         return result
@@ -109,7 +125,8 @@ def assessment(origin, payments, records, as_of, unresolved=False, allow_asserti
     # Full intent must apply to the final repayment, not an earlier installment.
     # Cross-bank dates do not supply intraday order: every possible last payment
     # must support final settlement before applying tolerance.
-    final_full = bool(latest and all(p['full_settlement_intent'] for p in latest))
+    final_full = bool(latest and all(p['full_settlement_intent'] for p in latest) and
+                      not (assertion and assertion['kind'] == 'balance' and Decimal(assertion['amount']) > ZERO))
     if payments and residual == ZERO:
         result.update(status='CLOSED', outstanding_amount='0.00', reason='verified_principal_repaid_exactly')
     elif payments and final_full and ZERO < residual <= TOLERANCE:
@@ -180,9 +197,12 @@ def derive(origins, records, relationships, classification):
         proposals.append({'allocation_id': 'ALLOC_' + digest([identifier, oid])[:20], 'obligation_id': oid,
             'repayment_transaction_id': identifier, 'amount': amount, 'currency': 'INR', 'rule': rule,
             'relationship_ids': sorted(linked), 'explicit_split': explicit_split,
-            'full_settlement_intent': full_intent(record['note']),
+            'full_settlement_intent': scoped_full_intent(record['note'], obligations[oid]['originating_transaction_ids'], explicit_split),
             'explicit_minor_overpayment': bool(re.search(r'\b(?:extra .*rounding|minor overpayment adjustment)\b', record['note'])),
-            'confidence': 'high', 'evidence': proof(record)})
+            'confidence': 'high', 'evidence_strength': 'high',
+            'confirmation_method': {'unique_immediate_bank_counterparty_return': 'inferred',
+                'explicit_source_allocation': 'explicit_source_allocation'}.get(rule, 'source_supported'),
+            'evidence': proof(record)})
 
     for identifier in sorted(records):
         record = records[identifier]
@@ -343,7 +363,7 @@ def build(documents, relationships, classification, audit, origins):
     if rebuilt != {k: v for k, v in origins.items() if k != 'verification'}:
         raise ValueError('stale or altered obligation origins')
     records = flatten(documents)
-    result = {'schema_version': '3C.3.1', 'input_fingerprints': {
+    result = {'schema_version': '3C.3.2', 'input_fingerprints': {
         'reconciled': {d['bank']: digest(d) for d in sorted(documents, key=lambda d: d['bank'])},
         'relationships': digest(relationships), 'classification': digest(classification), 'audit': digest(audit), 'origins': digest(origins)},
         **derive(origins, records, relationships, classification),
@@ -385,9 +405,9 @@ def validate(result, origins, records, relationships, classification):
 
 def run(root=ROOT):
     root = Path(root)
-    protected = sorted(p for folder in ('input', 'output/bank', 'output/events', 'output/reconciled',
-        'output/relationships', 'output/classification', 'output/audit', 'output/obligations')
-        for p in (root / folder).rglob('*') if p.is_file())
+    protected = sorted([p for folder in ('input', 'output/bank', 'output/events', 'output/reconciled',
+        'output/relationships', 'output/classification', 'output/obligations')
+        for p in (root / folder).rglob('*') if p.is_file()] + [root / 'output/audit/coverage_audit.json'])
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected}
     def read(path):
         return json.loads((root / path).read_text(encoding='utf-8'))
