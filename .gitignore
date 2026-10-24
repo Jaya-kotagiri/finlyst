@@ -1,1 +1,49 @@
+# Private source files and generated financial data
+/input/
+/output/
+
+# Environment variables, local secrets, and credentials
+.env
+.env.*
+secrets/
+.secrets/
+secrets.*
+credentials.*
+*.pem
+*.key
+
+# Python virtual environments and caches
 .venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# IDE, runtime, and temporary files
+.idea/
+.vscode/
+.ipynb_checkpoints/
+.streamlit/secrets.toml
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+~$*
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+Desktop.ini

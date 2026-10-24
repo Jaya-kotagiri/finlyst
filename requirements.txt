@@ -1,0 +1,5 @@
+# SBI XLSX reader; Kotak and shared validation use the standard library.
+openpyxl==3.1.5
+openai==3.26.0
+pydantic==2.13.5
+python-dotenv==1.2.4
