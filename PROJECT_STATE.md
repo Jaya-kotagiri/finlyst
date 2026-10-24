@@ -1,8 +1,40 @@
 # Project state
 
+## Phase 3C.3 complete: deterministic settlement engine
+
+Added `src/settlements.py` and `tests/test_settlements.py`. Generated private `output/settlements/settlements.json`, containing repayment allocations, an updated obligation settlement view, unresolved candidates, clarification references, classification effects and evidence/source hashes. The original 3C.2 obligation-origin document remains unchanged. Earlier sections below describe historical slices.
+
+| Status | Obligations |
+| --- | ---: |
+| OPEN | 0 |
+| PARTIAL | 0 |
+| CLOSED | 3 |
+| UNASSESSED | 5 |
+
+Five verified repayment allocations total **INR 3,345.00** (receivables 3,345.00; payables 0.00), with **0.00 rounding adjustments** on current data:
+
+- Jeevin's KOTAK_0014 share: 40.00 received in KOTAK_0015; CLOSED.
+- Manasa's KOTAK_0014 share: 25.00 received in SBI_0019; CLOSED, preserving cross-account context.
+- Dad's SBI_0025 temporary advance: 3,000.00 received in SBI_0026; CLOSED. The new generic rule requires the source promise to return immediately, an exact bank counterparty key, same-day chronological order, equal full principal, no competing obligation and no indistinguishable competing return credit. SBI_0026 has no note; amount similarity alone did not establish this match.
+- KOTAK_0032 group meal: Deena's 100.00 receipt in KOTAK_0033 and Manasa's 180.00 receipt in SBI_0022 are verified through existing 3B links. Both original principals remain null and settlement statuses UNASSESSED. Receiving those amounts does not establish the original shares or closure.
+
+**Confirmed outstanding receivables: 0.00; confirmed outstanding payables: 0.00. This is not a claim that no money is owed.** The two parents' ticket obligations have 3,538.00 of known original principal with unassessed settlement; their current outstanding amount is null. SBI_0023 is an actual 3,500.00 reimbursement with an unresolved allocation between them, retained as one candidate group and not subtracted or used twice. The arithmetic difference of 38.00 is outside the minor tolerance and does not establish the allocation or current debt. Three further principals remain unknown (Nandy and two group-meal shares).
+
+One new clarification asks how SBI_0023 applies to the ticket obligations. All six existing origin clarification IDs remain referenced; no duplicate requests were created for Nandy or group-meal uncertainty. There are no new prompts solely for a qualifying rounding difference. Original candidate questions about the four financially uncertain annotations are still in the origin document, without invented answers or obligations.
+
+Rules: prefer applicable confirmed 3B reimbursement links; otherwise require positive raw repayment language, named counterparty, chronology and an explicit origin ID/reference (or an unambiguous loan/debt context). The immediate-return rule above is separately constrained. Multiple payments may settle one origin; allocation across origins requires explicit source amounts, never an assumed ordering or equal split. Bounded supported syntax is `<origin transaction ID>: <amount>` or `= <amount>` alongside repayment and counterparty text. Malformed, duplicate or excessive splits remain unresolved. Shared receipt capacity is enforced globally. No new financial events are generated.
+
+All arithmetic uses Decimal. Original principal, actual verified repayment, signed adjustment, arithmetic residual and confirmed outstanding amount are separate. Exact full verified repayment closes an obligation. The INR 5 inclusive adjustment applies only to the final residual with strong final-settlement evidence, never per installment. Unexplained excesses are not adjusted and their financial treatment remains flagged; documented minor excess rounding can use a signed negative adjustment. Cross-bank same-day payments do not acquire fabricated intraday order. Conflicting dated balance statements prevent closure.
+
+OPEN/PARTIAL require explicit dated source confirmation of no repayments or an outstanding balance agreeing with the verified ledger, through at least the supplied bank-data horizon. Without it, a positive arithmetic residual is UNASSESSED, not confirmed debt. Generic assertions attached to an origin with several counterparties cannot establish each person's balance. This deliberately conservative rule avoids assuming missing cash/off-bank history is complete. Status dates describe the supplied evidence, not a live account balance.
+
+Classification effects reference the existing bank movement and only the allocated repayment amount; they do not add cashflows. They preserve original effective labels, exclude supported repayment principal from income/expense and leave any unallocated portion or unexplained excess for review. In particular, SBI_0026 receives settlement-derived repayment treatment while its original 3C.1 unknown classification remains intact. Consumers must join this overlay with the earlier effective view rather than summing settlement records as new money.
+
+Verification: **125 tests passed (24 new)**, covering exact/partial/multiple/cross-account repayments, payables, explicit multi-origin allocations, final-residual tolerance including 5.00 and 5.01 boundaries, unexplained/documented overpayments, missing coverage, unknown principal, conflicting statements, competing origins/credits, excluded flows, stale inputs, tampering and source preservation. Real-data checks verified eight unique views, five unique allocated bank receipts, byte-identical reruns and reversed-input-order results. All **17** protected input and upstream-output file hashes remained unchanged. No new dependency, OpenAI call, PostgreSQL, dashboard, frontend or assistant. **Stop before Phase 3C.4.**
+
 ## Approved rule for Phase 3C.3: minor settlement differences
 
-Recorded for the next settlement implementation; Phase 3C.2 outputs remain unchanged and UNASSESSED.
+Implemented in the Phase 3C.3 settlement view; original Phase 3C.2 outputs remain unchanged and UNASSESSED.
 
 - After strong evidence links actual repayment(s) to the same obligation and supports full settlement, permit a final residual difference of up to INR 5.00 inclusive as a rounding/minor settlement adjustment. Amount similarity alone never establishes a match or full settlement.
 - Preserve all original transaction amounts and references. Record actual repayment totals and the signed difference/adjustment separately, with supporting evidence; do not rewrite principal or pretend the adjusted difference was repaid.
