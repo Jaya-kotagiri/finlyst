@@ -3,20 +3,11 @@
 from copy import deepcopy
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
-from test_relationships import doc, share
-from src.reconcile import reconcile
+from tests.support import temporary_directory, doc, share, with_semantics
 from src.relationships import derive, flatten
 from src.classification import build, run, validate_view
-
-
-def with_semantics(document, fields):
-    source = deepcopy(document['event_source_document'])
-    for event, values in zip(source['events'], fields):
-        event.update(values)
-    return reconcile([r['bank_transaction'] for r in document['transactions']], source)
 
 
 def item(result, identifier):
@@ -120,7 +111,7 @@ class ClassificationTests(unittest.TestCase):
 
     def test_atomic_idempotent_and_unchanged_inputs(self):
         docs=[doc('SBI',[dict(note='Auto fare',event_type='purchase')]),doc('KOTAK',[dict()])]
-        with TemporaryDirectory(dir=Path(__file__).resolve().parents[1]/'tests/fixtures') as folder:
+        with temporary_directory() as folder:
             root=Path(folder);paths=[root/'sbi.json',root/'kotak.json'];rp=root/'relationships.json';out=root/'effective.json'
             for p,d in zip(paths,docs):p.write_text(json.dumps(d))
             rp.write_text(json.dumps(derive(docs)));before={p:p.read_bytes() for p in paths+[rp]}

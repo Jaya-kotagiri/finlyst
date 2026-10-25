@@ -2,6 +2,23 @@
 
 A deliberately simple local Python rebuild. Slice 0 and both bank converters are complete.
 
+## Running the synthetic tests
+
+From the project root, install the pinned dependencies in a Python virtual environment
+with `python -m pip install -r requirements.txt`, then run:
+
+```powershell
+python -m unittest discover -s tests -v
+python -m unittest discover -v
+python -m unittest tests.test_classification -v
+```
+
+Both discovery commands run the full suite; the last command runs one module independently.
+Tests generate synthetic CSV/XLSX/JSON files in temporary directories under `tests/`
+and clean them up afterward. No existing `tests/fixtures/`, private `input/` or
+`output/`, `.env`, or API key is required. API interactions are mocked. Shared
+builders live in `tests/support.py`; test modules do not import each other.
+
 Planned direction:
 
 ```text

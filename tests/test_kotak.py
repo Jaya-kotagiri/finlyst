@@ -3,9 +3,9 @@
 import csv
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
+from tests.support import temporary_directory
 from src.kotak import HEADER, parse_kotak
 from src.models import FIELDS, money
 from src.validation import validate_transaction, validate_transactions, write_json
@@ -13,8 +13,7 @@ from src.validation import validate_transaction, validate_transactions, write_js
 
 class KotakTests(unittest.TestCase):
     def setUp(self):
-        root = Path(__file__).resolve().parents[1] / 'tests/fixtures'
-        self.directory = TemporaryDirectory(dir=root)
+        self.directory = temporary_directory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name) / 'synthetic.csv'
         self.rows = [

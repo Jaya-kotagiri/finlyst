@@ -3,37 +3,13 @@
 from copy import deepcopy
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
-from test_relationships import doc, share
-from test_classification import with_semantics
-from test_obligations import inputs
-from src.obligations import build as build_origins
+from tests.support import (
+    temporary_directory, doc, share, with_semantics, prepared, settle, origin, receipt, single,
+)
 from src.relationships import flatten
 from src.settlements import build, run, validate
-
-
-def prepared(documents):
-    previous = inputs(documents)
-    return (*previous, build_origins(*previous))
-
-
-def settle(documents):
-    return build(*prepared(documents))
-
-
-def origin(amount='100.00', party='Alice', follow_up=None):
-    return dict(amount=amount, note=f'{party} share {amount}', components=[share(party, amount)], follow_up=follow_up)
-
-
-def receipt(amount='100.00', note='Alice repaid in full for KOTAK_0001', date='2026-08-02'):
-    return dict(direction='credit', amount=amount, note=note, date=date)
-
-
-def single(result):
-    row, = result['obligation_settlement_view']
-    return row
 
 
 class SettlementTests(unittest.TestCase):
@@ -223,7 +199,7 @@ class SettlementTests(unittest.TestCase):
 
     def test_idempotent_file_run_and_preservation(self):
         data = prepared([doc('KOTAK', [origin()]), doc('SBI', [receipt()])])
-        with TemporaryDirectory() as tmp:
+        with temporary_directory() as tmp:
             root = Path(tmp)
             files = {f'output/reconciled/{d["bank"].lower()}_reconciled.json': d for d in data[0]}
             files.update({'output/relationships/relationships.json': data[1],

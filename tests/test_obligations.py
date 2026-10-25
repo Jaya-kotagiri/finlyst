@@ -3,23 +3,11 @@
 from copy import deepcopy
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
-from test_relationships import doc, share
-from test_classification import with_semantics
-from src.classification import build as classify
-from src.relationships import derive, flatten
+from tests.support import temporary_directory, doc, share, with_semantics, inputs
+from src.relationships import flatten
 from src.obligations import build, run, validate
-
-
-def inputs(documents):
-    relationships = derive(documents)
-    classification = classify(documents, relationships)
-    audit = {'transactions': [dict(r['bank'], event_id=r['event']['event_id'] if r['event'] else None,
-                                   effective_treatment=t['effective']['treatment'])
-                              for r, t in zip(flatten(documents).values(), classification['transactions'])]}
-    return documents, relationships, classification, audit
 
 
 def generate(documents):
@@ -174,7 +162,7 @@ class ObligationTests(unittest.TestCase):
 
     def test_write_is_idempotent_and_preserves_all_input_bytes(self):
         data = inputs([doc('KOTAK', [dict(note='Alice share 40', components=[share()])]), doc('SBI', [dict()])])
-        with TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             root = Path(temp)
             content = {f'output/reconciled/{d["bank"].lower()}_reconciled.json': d for d in data[0]}
             content.update({'output/relationships/relationships.json': data[1],

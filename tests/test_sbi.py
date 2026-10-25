@@ -4,11 +4,11 @@ import csv
 from datetime import datetime
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
 from openpyxl import Workbook
 
+from tests.support import temporary_directory
 from src.kotak import HEADER as KOTAK_HEADER, parse_kotak
 from src.models import FIELDS
 from src.sbi import HEADER, SUMMARY_HEADER, FOOTER, parse_sbi
@@ -17,7 +17,7 @@ from src.validation import validate_transactions, write_json
 
 class SbiTests(unittest.TestCase):
     def setUp(self):
-        self.directory = TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / 'tests/fixtures')
+        self.directory = temporary_directory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name) / 'synthetic.xlsx'
         self.rows = [

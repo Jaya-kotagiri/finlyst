@@ -1,11 +1,11 @@
 """Synthetic coverage regressions; no private data or API access."""
 
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
 from openpyxl import Workbook
 
+from tests.support import temporary_directory
 from src.audit import candidates, coverage_counts, inspect_workbook, reason
 
 
@@ -44,7 +44,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(counts['unmatched_but_classified'], 1)
 
     def test_scan_does_not_stop_at_footer_or_skip_hidden_rows(self):
-        with TemporaryDirectory() as temporary:
+        with temporary_directory() as temporary:
             path = Path(temporary) / 'notes.xlsx'
             workbook = Workbook(); sheet = workbook.active
             sheet.append(['Date', 'Details', 'Meaning', 'missed'])

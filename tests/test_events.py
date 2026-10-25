@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -10,6 +9,7 @@ from unittest.mock import Mock, patch
 from openpyxl import Workbook
 from pydantic import ValidationError
 
+from tests.support import temporary_directory
 from src.event_models import EventBatch
 from src.events import batch_notes, generate_events, interpret_batch, validate_batch
 from src.notes import read_notes
@@ -25,7 +25,7 @@ def event(row):
 
 class EventTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / 'tests/fixtures')
+        self.tmp = temporary_directory()
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / 'notes.xlsx'
         self.rows = [dict(source_id='sheet:2', date='2026-08-01', amount='78.00', direction='debit')]

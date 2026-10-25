@@ -3,9 +3,9 @@
 from copy import deepcopy
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
+from tests.support import temporary_directory
 from src.reconcile import digest, reconcile, run, validate_result, reference_precision
 
 
@@ -154,7 +154,7 @@ class ReconcileTests(unittest.TestCase):
         with self.assertRaises(ValueError): validate_result(result, bank, doc)
 
     def test_atomic_idempotent_output_and_inputs_unchanged(self):
-        with TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / 'tests/fixtures') as folder:
+        with temporary_directory() as folder:
             root = Path(folder); bank = [transaction(1)]; doc = document(bank, [0])
             bp, ep, out = root/'bank.json', root/'events.json', root/'reconciled.json'
             bp.write_text(json.dumps(bank)); ep.write_text(json.dumps(doc))

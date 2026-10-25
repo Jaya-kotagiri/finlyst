@@ -3,12 +3,11 @@
 from copy import deepcopy
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
 
-from test_relationships import doc
-from test_classification import with_semantics
-from test_settlements import origin, receipt, prepared, settle, single
+from tests.support import (
+    temporary_directory, doc, with_semantics, origin, receipt, prepared, settle, single,
+)
 from src.settlements import run, build as settle_layers
 from src.obligations import run as run_origins
 from src.reconcile import reconcile
@@ -69,7 +68,7 @@ class IntegrityRegressionTests(unittest.TestCase):
 
     def test_downstream_audit_report_does_not_change_upstream_fingerprints(self):
         data = prepared([doc('KOTAK', [origin()]), doc('SBI', [receipt()])])
-        with TemporaryDirectory() as temp:
+        with temporary_directory() as temp:
             root = Path(temp)
             files = {f'output/reconciled/{d["bank"].lower()}_reconciled.json': d for d in data[0]}
             files.update({'output/relationships/relationships.json': data[1],

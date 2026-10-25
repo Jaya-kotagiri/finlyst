@@ -1,5 +1,23 @@
 # Project state
 
+## Phase 3R.2A complete: reproducible tests
+
+The read-only 3R.1 architecture audit found that 36 tests depended on an untracked `tests/fixtures/` directory, shared builders were imported from other test modules, and default discovery/individual-module imports were unreliable. This checkpoint repairs only test portability.
+
+Added `tests/__init__.py` and `tests/support.py`. Shared synthetic relationship, semantic, obligation and settlement builders now live in test support, with their existing behavior preserved. All ten test modules use self-cleaning temporary workspaces under the existing `tests/` directory; CSV/XLSX/JSON fixtures are generated during tests. No pre-existing fixture directory, private input/output, `.env` or API key is needed. Test modules no longer import one another. README documents full discovery and individual-module commands.
+
+Verification on Python 3.13 with all four dependency versions matching `requirements.txt`:
+
+- Workspace: `python -B -m unittest discover -s tests -q` passed all **142 existing tests**.
+- Clean detached Git checkout under `D:\finlyst\tmp\phase3r2a\checkout`, containing only tracked files and no `input/`, `output/`, `tests/fixtures/` or `.env`: default `python -B -m unittest discover -q` passed **142 tests**.
+- Each of the **10 test modules passed independently in a fresh Python process**, totaling the same 142 tests.
+- A shuffled suite (seed `20261025`) passed **142 tests**. The clean checkout remained clean afterward, with no leftover test directories or private-data dependencies.
+- Used the existing virtual-environment interpreter and verified its pinned dependency versions; this was a clean source checkout, not a newly installed dependency environment. The sandbox initially denied temporary-file creation in the detached worktree; rerunning with filesystem approval passed without code changes.
+- Compared test methods and assertion ASTs against the previous commit: all 142 methods and their assertions remain intact. No new tests or production changes were needed.
+- SHA-256 and file-inventory comparisons confirm **36 protected production/source/output artifacts remain unchanged**, including all `src/` files, `app.py`, dependency/ignore files, private inputs and financial outputs. Schemas, IDs and financial behavior were not modified.
+
+No API calls, financial refactoring, production CLI changes or database work. **Stop after Phase 3R.2A verification.** The other 3R.1 architecture recommendations remain pending.
+
 ## Phase 3C.4 complete: financial integrity audit
 
 Added `src/integrity.py`, `tests/test_integrity.py` and private `output/audit/financial_integrity.json`. The read-only audit inspects every current bank, event, 3A, 3B, classification, coverage, obligation and settlement document; reparses original Kotak CSV/SBI XLSX and both notes workbooks; replays all deterministic stages and independently checks the repayment ledger. **14 checks passed, zero failed; full suite 142 tests passed (17 new integrity regressions/cross-layer tests).**
