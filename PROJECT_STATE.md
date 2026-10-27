@@ -51,8 +51,25 @@ Automatic account identity requires the full unmasked account number supported b
 these sources. Multi-writer transactional persistence remains for 3D. PostgreSQL key,
 revision, provenance and unresolved-identity design is documented, not implemented.
 
-**Stop after Phase 3R.2C verification; no subsequent slice started.** Earlier sections
-below describe previous checkpoints.
+### Resumed checkpoint verification (2026-10-27)
+
+Resumed from clean, committed checkpoint `956eaf5`; no unfinished implementation or
+uncommitted schema work was present. Preserved the implementation and reran all
+**192 tests successfully**, including overlap, identity stability, ambiguity and
+cross-record mapping regressions. The original 165 tests and pre-3R.2C production
+files were compared against `5fab5f3` and remain unchanged.
+
+Compared all 19 protected files against the unchanged `tmp/phase3r2c/baseline.json`:
+all hashes match, and all 12 existing financial outputs also match retained baseline
+bytes. Two actual-data registry runs leave the registry byte-identical to the resumed
+checkpoint, with the same 297 records, 297 revisions and 844 valid mappings. No IDs
+were reallocated and no financial files were changed. Updated the ignored verification
+helper to identify original tests from the fixed pre-identity commit rather than the
+current Git index; saved refreshed verification evidence under `tmp/phase3r2c/`.
+No production repair or duplicated implementation was necessary.
+
+**Stop before Phase 3R.3; no subsequent slice started.** Earlier sections below describe
+previous checkpoints.
 
 ## Phase 3R.2B complete: strict output schemas
 
