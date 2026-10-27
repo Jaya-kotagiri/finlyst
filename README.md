@@ -8,6 +8,71 @@ overlap/continuity rules, Python integration and PostgreSQL migration design. Ke
 private `output/identities/identity_registry.json` across imports and back it up with
 the source artifacts; Git deliberately excludes it.
 
+## Unified pipeline CLI
+
+From the project root, with the project virtual environment active:
+
+```powershell
+python -m src.cli --help
+python -m src.cli run --offline
+python -m src.cli run --from reconcile --to integrity --offline
+python -m src.cli reconcile --bank all
+python -m src.cli validate --all
+```
+
+`run` defaults to offline operation even without `--offline`. It executes sequentially:
+
+```text
+bank -> events (reuse saved JSON) -> reconcile -> relationships -> classification
+     -> audit (notes coverage) -> obligations -> settlements -> identities -> integrity
+```
+
+Each stage name is also an individual command. `bank`, `events` and `reconcile` accept
+`--bank kotak`, `--bank sbi` or `--bank all` (the default). Cross-account stages consume
+both banks. `--from` and `--to` select an inclusive contiguous range; earlier outputs
+must already exist. A reversed range is rejected before execution.
+
+Select a different project directory with `--root`, before or after the subcommand:
+
+```powershell
+python -m src.cli --root D:\finlyst validate --all
+python -m src.cli reconcile --root D:\finlyst --bank kotak
+```
+
+Paths under that root retain the existing `input/` and `output/` structure. Bank input
+selection requires one Kotak CSV and one `sbi_unencrypted.xlsx`; notes require one XLSX
+per bank. PDFs are not processed. Missing or ambiguous sources fail with a path-specific
+error instead of choosing arbitrarily.
+
+The events stage validates saved events against their normalized bank facts and the
+current notes workbook. Existing events are never automatically regenerated. Missing
+events fail offline. Explicit API permission is available only on `run` and `events`:
+
+```powershell
+python -m src.cli events --bank kotak --allow-api
+```
+
+This authorizes generation **only if that bank's event output is missing**. It uses the
+existing event processor, batching, model and retained diagnostics, with zero automatic
+network retries. It loads `OPENAI_API_KEY` from the environment or the selected root's
+ignored `.env` only on that API path. Existing valid outputs are reused even with
+`--allow-api`; stale or invalid saved events require review and are never silently
+reinterpreted. `--allow-api` and `--offline` are mutually exclusive.
+
+`validate --all` is strictly read-only: it validates saved schemas, replays the existing
+integrity checks against original sources, checks the saved integrity report and checks
+identity mappings against the current snapshot. It neither saves reports nor repairs
+missing/stale mappings. All stage outputs, including the integrity report and registry,
+must already exist. `--help` loads no stage runners and performs no project reads/writes.
+Use Python's `-B` option if you also want to suppress interpreter bytecode caches.
+
+Progress names each stage. Exit codes are 0 for success, 1 for execution/validation
+failure and 2 for invalid arguments. Execution stops at the first failed stage; earlier
+completed stages are not rolled back. An integrity-stage failure may save its diagnostic
+report, while `validate` never writes. The CLI retains the integrity runner's existing
+154-transaction/85-event dataset-specific assertions; it does not silently loosen those
+checks for future datasets. No financial rules, IDs, classifications or evidence change.
+
 ## Running the synthetic tests
 
 From the project root, install the pinned dependencies in a Python virtual environment

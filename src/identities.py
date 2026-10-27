@@ -454,8 +454,8 @@ def summary(state):
         unresolved_mappings=sum(d['status'] == 'unresolved' for d in decisions))
 
 
-def run(root=ROOT):
-    """Migrate the existing local pipeline snapshot, writing only the identity sidecar."""
+def run(root=ROOT, *, write_output=True):
+    """Validate/migrate the local snapshot; write only the sidecar unless write_output=False."""
     root = Path(root)
     destination = root/'output/identities/identity_registry.json'
     protected = {p: p.read_bytes() for folder in ('input', 'output') for p in (root/folder).rglob('*')
@@ -487,6 +487,8 @@ def run(root=ROOT):
         raise ValueError('source changed during identity migration')
     if (destination.read_bytes() if destination.exists() else None) != previous_bytes:
         raise ValueError('identity registry changed during migration')
+    if not write_output:
+        return result
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix('.json.tmp')
     try:

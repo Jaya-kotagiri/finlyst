@@ -271,7 +271,8 @@ def audit_layers(banks, events, documents, relationships, classification, covera
     return checks
 
 
-def run(root=ROOT):
+def run(root=ROOT, *, write_output=True):
+    """Audit saved layers and sources; optionally return the report without writing it."""
     root = Path(root)
     folders = ('input', 'output/bank', 'output/events', 'output/reconciled', 'output/relationships',
                'output/classification', 'output/obligations', 'output/settlements')
@@ -324,6 +325,8 @@ def run(root=ROOT):
             'Full-settlement intent for one explicit split does not close other obligation shares.',
             'Only the consumed coverage audit is an upstream fingerprint dependency; downstream audit reports cannot create hash cycles.'],
         'source_sha256': hashes}
+    if not write_output:
+        return report
     output = root / 'output/audit/financial_integrity.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix('.json.tmp')

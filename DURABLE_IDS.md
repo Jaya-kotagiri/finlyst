@@ -86,7 +86,9 @@ clarification. No automatic merging of accounts, names or uncertain records occu
 
 ## Python integration
 
-No CLI was added. Existing financial writers continue to produce their legacy formats.
+Phase 3R.3 exposes these functions through `python -m src.cli identities` and checks
+saved mappings without writing through `python -m src.cli validate --all`. Existing
+financial writers continue to produce their legacy formats. See README for pipeline usage.
 
 ```python
 from src.identities import empty_registry, import_bank, lookup, migrate, run

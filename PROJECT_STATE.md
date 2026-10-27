@@ -1,5 +1,49 @@
 # Project state
 
+## Phase 3R.3 complete: unified pipeline CLI
+
+Added `src/cli.py` using standard-library argparse and existing Python stage functions.
+The sequential order is bank, saved events, reconciliation, relationships, classification,
+coverage audit, obligations, settlements, durable identities and integrity. Every stage
+has an individual command; `run --from ... --to ...` selects an inclusive range. `--root`
+configures the project directory, and bank/events/reconcile support per-bank selection.
+README documents the requested commands, paths, API policy and failure behavior.
+
+Offline is the default. Saved events are checked against normalized bank facts and
+current notes. Missing events require explicit `--allow-api` on run/events; this only
+permits generation of missing outputs, never automatic replacement of existing events.
+The existing generation processor, diagnostics and zero-retry API client are reused.
+No real API calls were made during implementation or verification.
+
+Added keyword-only `write_output=False` support to the existing integrity and identity
+runners, leaving their default behavior and calculations unchanged. `validate --all`
+uses those read-only paths, validates the saved reports/mappings and rejects stale or
+missing outputs without repairing them. Help exits before stage imports or project
+access. Errors identify the failing stage and return nonzero; later stages do not run.
+Completed earlier stages are not rolled back. No dependency or framework was added.
+
+Verification on 2026-10-27:
+
+- **214 tests passed: all 192 existing tests plus 22 CLI regressions.** Tests cover
+  ordering, ranges, bank/root options, invalid arguments, lazy help, offline safety,
+  mocked explicit API access without retries, stale inputs, failure handling, synthetic
+  end-to-end reruns, read-only success/failure and missing durable mapping detection.
+- Executed all five requested command forms on actual data, plus a second full run
+  without `--offline` to verify the default. Both complete runs and the selected-range
+  run succeeded. Validation passed all **14 integrity checks and 844 identity mappings**.
+- Captured the pre-change inventory/hashes in `tmp/phase3r3/baseline.json`. After every
+  command, all **20 protected files** remained byte-identical: seven private source
+  files, twelve existing financial JSON outputs and the durable identity registry.
+  Help and read-only validation also preserved protected-file modification times;
+  no input/output files were added or removed. Verification is retained under ignored
+  `tmp/phase3r3/verification.json`.
+- Legacy IDs, permanent UUIDs, classification, settlement evidence and all unresolved
+  financial states are unchanged. The existing integrity runner's dataset-specific
+  assertions remain in force; supporting a different baseline is a separate change.
+
+No financial-rule changes, PostgreSQL implementation or unapproved API calls.
+**Stop after Phase 3R.3 verification, before Phase 3D.**
+
 ## Phase 3R.2C complete: durable financial identities
 
 Audited transaction, semantic event, relationship, obligation, allocation, settlement
