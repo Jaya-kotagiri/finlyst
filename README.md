@@ -2,6 +2,12 @@
 
 A deliberately simple local Python rebuild. Slice 0 and both bank converters are complete.
 
+Phase 3R.2C adds a persistent durable-ID registry without changing existing financial
+JSON or stage commands. See [DURABLE_IDS.md](DURABLE_IDS.md) for the legacy-ID audit,
+overlap/continuity rules, Python integration and PostgreSQL migration design. Keep the
+private `output/identities/identity_registry.json` across imports and back it up with
+the source artifacts; Git deliberately excludes it.
+
 ## Running the synthetic tests
 
 From the project root, install the pinned dependencies in a Python virtual environment

@@ -1,5 +1,59 @@
 # Project state
 
+## Phase 3R.2C complete: durable financial identities
+
+Audited transaction, semantic event, relationship, obligation, allocation, settlement
+and clarification IDs. Existing sequence IDs are file-scoped; several downstream hashes
+depend on mutable status, rule or counterparty names. Added `src/identities.py`, strict
+`src/identity_models.py`, `tests/test_identities.py` and `DURABLE_IDS.md`. No existing
+production module, financial schema, calculation, legacy ID or source test was changed.
+
+The new private `output/identities/identity_registry.json` (`3R.2C.1`) explicitly maps
+source-scoped legacy IDs to permanent UUIDs, separates interpretation revisions from
+source provenance, and records durable cross-record references. Existing financial
+files retain their original formats and IDs. Exact supported overlaps reuse bank IDs
+across renumbered imports; missing account evidence, indistinguishable occurrences,
+conflicting facts and uncertain claim continuity stay unresolved rather than creating
+speculative duplicate money. Counterparty corrections can retain the original claim
+through an explicit identity decision with actor/reason provenance. No such manual
+decisions were needed or invented for the current data.
+
+Current registry: **154 transactions, 85 events, 27 relationships, eight obligations,
+five allocations and eight settlement views**. It also maps two accounts, six origin
+questions, one settlement candidate and one settlement question: **297 records,
+297 revisions, 11 source artifacts and 844 scoped legacy mappings; zero unresolved
+identity mappings**. Existing financial ambiguity and UNASSESSED statuses are unchanged.
+
+Verification completed on 2026-10-27:
+
+- **192 tests passed: all 165 unchanged existing tests plus 27 identity regressions.**
+  Coverage includes repeat/overlap/reversed imports, account/month separation, sequence
+  renumbering, indistinguishable rows and subsets, explicit continuity, counterparty
+  corrections, status/rule changes, shared claims, foreign references and malformed
+  registry/input rejection before overwriting a valid registry.
+- Actual-data migration validates existing stage contracts and deterministically
+  replays reconciliation validation, relationships, classification, obligations and
+  settlements. Repeated migrations produce byte-identical registry output.
+- All **12 existing financial JSON files remain byte-identical** to the retained
+  original baseline. Hash/inventory checks confirm all **19 original input/output
+  files unchanged**, including the seven private source files. The registry is the
+  only additional output. Baseline and verification evidence are under ignored
+  `tmp/phase3r2c/`; byte comparison also uses the retained 3R.2B baseline copies.
+- Existing tracked production/test/dependency/ignore files are unchanged. No new
+  dependency, API call, CLI, financial-rule change or PostgreSQL implementation.
+
+Operational limits: retain and privately back up the registry and source snapshots;
+derived UUIDs are allocated once and are not regenerated from each interpretation.
+The current JSON pipeline remains one document per bank per snapshot. Additional
+account/month snapshots enter the same registry separately through the Python API;
+consumers must deduplicate through durable IDs rather than concatenate legacy rows.
+Automatic account identity requires the full unmasked account number supported by
+these sources. Multi-writer transactional persistence remains for 3D. PostgreSQL key,
+revision, provenance and unresolved-identity design is documented, not implemented.
+
+**Stop after Phase 3R.2C verification; no subsequent slice started.** Earlier sections
+below describe previous checkpoints.
+
 ## Phase 3R.2B complete: strict output schemas
 
 Added `src/output_models.py` with reusable strict Pydantic contracts for reconciliation, relationships, effective classification, obligation origins and settlements. Supporting contracts cover normalized bank records, saved event envelopes (including approved local-correction history) and the coverage audit consumed by obligations. Existing versions remain unchanged: events `1.0`, reconciliation `3A.2`, relationships `3B.1`, classification `3C.1.1`, coverage `3C.1A.1`, obligations `3C.2.1` and settlements `3C.3.2`.
