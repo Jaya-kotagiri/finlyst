@@ -73,8 +73,8 @@ class IntegrityRegressionTests(unittest.TestCase):
             files = {f'output/reconciled/{d["bank"].lower()}_reconciled.json': d for d in data[0]}
             files.update({'output/relationships/relationships.json': data[1],
                 'output/classification/effective_transactions.json': data[2],
-                'output/audit/coverage_audit.json': dict(data[3], verification={'source_sha256': {}}),
-                'output/obligations/obligations.json': dict(data[4], verification={'protected_file_sha256': {}})})
+                'output/audit/coverage_audit.json': data[3],
+                'output/obligations/obligations.json': dict(data[4], verification={'protected_file_sha256': {}, 'source_files_unchanged': True})})
             for name, value in files.items():
                 p = root / name; p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(json.dumps(value), encoding='utf-8')

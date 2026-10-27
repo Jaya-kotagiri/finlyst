@@ -162,7 +162,7 @@ class EventTests(unittest.TestCase):
 
     def test_merge_save_single_read_and_no_partial_output(self):
         destination = Path(self.tmp.name) / 'events.json'
-        rows = [dict(self.rows[0], source_id=f'sheet:{i}') for i in range(70)]
+        rows = [dict(self.rows[0], source_id=f'sheet:{i}') for i in range(1, 71)]
         def interpret(client, batch, bank, model, audit_path=None):
             return EventBatch.model_validate({'events': [event(r) for r in batch]}), {'input_tokens': 1, 'output_tokens': 1}
         with patch('src.events.read_notes', return_value=rows) as read, patch('src.events.interpret_batch', side_effect=interpret) as api:

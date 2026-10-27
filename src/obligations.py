@@ -9,6 +9,9 @@ import re
 
 from .classification import build as classify
 from .reconcile import digest
+from .output_models import (ClassificationOutput, CoverageOutput, ObligationsOutput,
+                            ObligationsFileOutput, ReconciliationOutput, RelationshipsOutput)
+from .schema_validation import parse_document, validate_schema
 from .relationships import flatten, mentions_party, text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +91,9 @@ def summarize(origins, questions):
 
 
 def build(documents, relationships, classification, audit):
+    validate_schema(RelationshipsOutput, relationships, "obligations relationships input")
+    validate_schema(ClassificationOutput, classification, "obligations classification input")
+    validate_schema(CoverageOutput, audit, "obligations coverage input")
     records = flatten(documents)
     if classify(documents, relationships) != classification:
         raise ValueError('stale or altered effective classification')
@@ -229,6 +235,8 @@ def build(documents, relationships, classification, audit):
 
 
 def validate(result, records, relationships):
+    validate_schema(ObligationsOutput, result, "obligations output")
+    validate_schema(RelationshipsOutput, relationships, "obligations relationships input")
     ids, keys = set(), set()
     rels = {r['relationship_id']: r for r in relationships['relationships']}
     for o in result['obligations']:
@@ -311,16 +319,17 @@ def run(root=ROOT):
         'output/relationships', 'output/classification') for p in (root / folder).rglob('*') if p.is_file()]
         + [root / 'output/audit/coverage_audit.json'])
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected}
-    def read(path):
-        return json.loads((root / path).read_text(encoding='utf-8'))
-    audit = read('output/audit/coverage_audit.json')
+    def read(path, schema):
+        return parse_document((root / path).read_bytes(), schema, str(root / path))
+    audit = read('output/audit/coverage_audit.json', CoverageOutput)
     for name, expected in audit['verification']['source_sha256'].items():
         if hashes.get(name) != expected:
             raise ValueError('audit source snapshot is stale: ' + name)
-    documents = [read(f'output/reconciled/{b}_reconciled.json') for b in ('kotak', 'sbi')]
-    relationships = read('output/relationships/relationships.json')
-    result = build(documents, relationships, read('output/classification/effective_transactions.json'), audit)
+    documents = [read(f'output/reconciled/{b}_reconciled.json', ReconciliationOutput) for b in ('kotak', 'sbi')]
+    relationships = read('output/relationships/relationships.json', RelationshipsOutput)
+    result = build(documents, relationships, read('output/classification/effective_transactions.json', ClassificationOutput), audit)
     result['verification'] = {'protected_file_sha256': hashes, 'source_files_unchanged': True}
+    validate_schema(ObligationsFileOutput, result, 'obligations file output')
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + '\n'
     validate(json.loads(encoded), flatten(documents), relationships)
     if any(hashlib.sha256(p.read_bytes()).hexdigest() != hashes[str(p.relative_to(root))] for p in protected):

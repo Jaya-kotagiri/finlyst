@@ -15,6 +15,8 @@ from pydantic import ValidationError
 
 from .event_models import EventBatch
 from .notes import read_notes
+from .output_models import EventDocument
+from .schema_validation import validate_schema
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = 'gpt-4.1-mini-2025-04-14'
@@ -168,6 +170,7 @@ def generate_events(source, bank, destination, client, model=MODEL, batch_size=5
         'events': [dict(event_id=f'{bank}_EVENT_{i:04d}', **e.model_dump())
                    for i, e in enumerate(validated.events, 1)],
     }
+    validate_schema(EventDocument, document, "events output")
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix('.json.tmp')

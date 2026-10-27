@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 
 from .reconcile import digest
+from .output_models import ClassificationOutput, ReconciliationOutput, RelationshipsOutput
+from .schema_validation import parse_document, validate_schema
 from .relationships import flatten, validate_relationships
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +92,7 @@ def classify_record(record, treatment, related):
 
 
 def build(documents, relationships):
+    validate_schema(RelationshipsOutput, relationships, "classification relationships input")
     records = flatten(documents)  # Reuses complete 3A source and result validation.
     expected_fingerprints = {d['bank']: digest(d) for d in documents}
     if relationships['source_fingerprints'] != expected_fingerprints:
@@ -137,6 +140,7 @@ def build(documents, relationships):
 
 
 def validate_view(result, records):
+    validate_schema(ClassificationOutput, result, "classification output")
     rows = result['transactions']
     if len(rows) != len(records) or {r['transaction_id'] for r in rows} != set(records):
         raise ValueError('transaction coverage changed')
@@ -170,8 +174,8 @@ def validate_view(result, records):
 def run(reconciled_paths, relationship_path, output):
     paths = list(map(Path, reconciled_paths)); relationship_path = Path(relationship_path)
     snapshots = {p: p.read_bytes() for p in paths + [relationship_path]}
-    documents = [json.loads(snapshots[p]) for p in paths]
-    relationships = json.loads(snapshots[relationship_path])
+    documents = [parse_document(snapshots[p], ReconciliationOutput, str(p)) for p in paths]
+    relationships = parse_document(snapshots[relationship_path], RelationshipsOutput, str(relationship_path))
     result = build(documents, relationships)
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + '\n'
     validate_view(json.loads(encoded), flatten(documents))

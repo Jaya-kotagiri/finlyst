@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 
 from .event_models import FinancialEvent
+from .output_models import BankTransactions, EventDocument, ReconciliationOutput
+from .schema_validation import parse_document, validate_schema
 from .validation import validate_transactions
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +62,7 @@ def reference_precision(source, authoritative):
 
 def validate_inputs(bank, document):
     validate_transactions(bank)
+    validate_schema(EventDocument, document, "reconciliation event input")
     name = document['bank']
     if any(t['bank'] != name for t in bank):
         raise ValueError('bank/event document mismatch')
@@ -162,7 +165,7 @@ def reconcile(bank, document):
             'candidate_event_ids': pending})
     counts = Counter(t['match_status'] for t in transactions)
     event_counts = Counter(d['status'] for d in decisions)
-    return {'schema_version': '3A.2', 'bank': document['bank'],
+    result = {'schema_version': '3A.2', 'bank': document['bank'],
             'input_fingerprints': {'bank': digest(bank), 'events': digest(document)},
             'event_source_document': deepcopy(document),
             'transactions': transactions, 'event_decisions': decisions,
@@ -172,9 +175,11 @@ def reconcile(bank, document):
                        'unmatched_events': event_counts['unmatched'],
                        'ambiguous_events': event_counts['ambiguous'],
                        'meaning_review': sum(t['meaning_needs_review'] for t in transactions)}}
+    return validate_schema(ReconciliationOutput, result, 'reconciliation output')
 
 
 def validate_result(result, bank, document):
+    validate_schema(ReconciliationOutput, result, "reconciliation output")
     # Rebuild from authoritative inputs: validates decisions, evidence, counts and enrichment.
     if result != reconcile(bank, document):
         raise ValueError('reconciliation differs from deterministic validated result')
@@ -187,7 +192,8 @@ def validate_result(result, bank, document):
 
 def run(bank_path, event_path, destination):
     bank_bytes, event_bytes = Path(bank_path).read_bytes(), Path(event_path).read_bytes()
-    bank, document = json.loads(bank_bytes), json.loads(event_bytes)
+    bank = parse_document(bank_bytes, BankTransactions, str(bank_path))
+    document = parse_document(event_bytes, EventDocument, str(event_path))
     result = reconcile(bank, document)
     validate_result(result, bank, document)
     serialized = json.dumps(result, ensure_ascii=False, indent=2) + '\n'

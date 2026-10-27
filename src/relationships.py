@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 
 from .reconcile import digest, validate_result
+from .output_models import ReconciledDocuments, ReconciliationOutput, RelationshipsOutput
+from .schema_validation import parse_document, validate_schema
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +53,7 @@ def mentions_party(party, note):
 
 
 def flatten(documents):
+    validate_schema(ReconciledDocuments, documents, "reconciled inputs")
     records = {}
     for document in sorted(documents, key=lambda d: d['bank']):
         bank = [t['bank_transaction'] for t in document['transactions']]
@@ -272,6 +275,7 @@ def derive(documents):
 
 
 def validate_relationships(result, records):
+    validate_schema(RelationshipsOutput, result, "relationships output")
     ids = [r['relationship_id'] for r in result['relationships']]
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate relationship')
@@ -307,7 +311,7 @@ def validate_relationships(result, records):
 
 def run(paths, output):
     paths = list(map(Path, paths)); snapshots = {p: p.read_bytes() for p in paths}
-    documents = [json.loads(snapshots[p]) for p in paths]
+    documents = [parse_document(snapshots[p], ReconciliationOutput, str(p)) for p in paths]
     result = derive(documents)
     serialized = json.dumps(result, ensure_ascii=False, indent=2) + '\n'
     validate_relationships(json.loads(serialized), flatten(documents))

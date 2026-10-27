@@ -13,6 +13,9 @@ from .kotak import parse_kotak
 from .sbi import parse_sbi
 from .notes import blank, label, normalize_day, read_notes
 from .reconcile import narration
+from .output_models import (BankTransactions, ClassificationOutput, CoverageOutput,
+                            EventDocument, ReconciliationOutput, RelationshipsOutput)
+from .schema_validation import parse_document, validate_schema
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -97,11 +100,11 @@ def run(root=ROOT):
                                         'output/relationships', 'output/classification')
                        for p in (root / folder).rglob('*') if p.is_file())
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected}
-    def read(path):
-        return json.loads((root / path).read_text(encoding='utf-8'))
-    documents = [read(f'output/reconciled/{b}_reconciled.json') for b in ('kotak', 'sbi')]
-    view = read('output/classification/effective_transactions.json')
-    if build(documents, read('output/relationships/relationships.json')) != view:
+    def read(path, schema):
+        return parse_document((root / path).read_bytes(), schema, str(root / path))
+    documents = [read(f'output/reconciled/{b}_reconciled.json', ReconciliationOutput) for b in ('kotak', 'sbi')]
+    view = read('output/classification/effective_transactions.json', ClassificationOutput)
+    if build(documents, read('output/relationships/relationships.json', RelationshipsOutput)) != view:
         raise ValueError('Saved classification differs from validated deterministic rebuild')
     effective = {r['transaction_id']: r for r in view['transactions']}
     rows, inventory = [], {}
@@ -111,12 +114,12 @@ def run(root=ROOT):
             raise ValueError(f'{bank}: source selection is not unique')
         source = paths[0]
         transactions = parser(source)
-        if transactions != read(f'output/bank/{bank}_transactions.json'):
+        if transactions != read(f'output/bank/{bank}_transactions.json', BankTransactions):
             raise ValueError('Original bank source differs from bank JSON')
         document = next(d for d in documents if d['bank'] == bank.upper())
         if [r['bank_transaction'] for r in document['transactions']] != transactions:
             raise ValueError('Bank facts differ in reconciled output')
-        event_doc = read(f'output/events/{bank}_events.json')
+        event_doc = read(f'output/events/{bank}_events.json', EventDocument)
         if document['event_source_document'] != event_doc:
             raise ValueError('Reconciled event source differs from final events')
         note_paths = list((root / f'input/notes/{bank}').glob('*.xlsx'))
@@ -194,6 +197,7 @@ def run(root=ROOT):
               'verification': {'source_sha256': hashes, 'sources_unchanged': True,
                                'classification_rebuild_identical': True, 'deterministic_fixes': 0,
                                'api_calls': 0}, 'transactions': rows}
+    validate_schema(CoverageOutput, report, 'coverage audit output')
     output = root / 'output/audit/coverage_audit.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

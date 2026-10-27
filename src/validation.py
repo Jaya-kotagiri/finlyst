@@ -7,9 +7,12 @@ from pathlib import Path
 import re
 
 from .models import FIELDS
+from .output_models import BankTransaction, BankTransactions
+from .schema_validation import validate_schema
 
 
 def validate_transaction(transaction: dict) -> None:
+    validate_schema(BankTransaction, transaction, "bank transaction")
     if set(transaction) != set(FIELDS):
         raise ValueError('transaction fields differ from the shared schema')
     bank = transaction['bank']
@@ -40,6 +43,7 @@ def validate_transaction(transaction: dict) -> None:
 
 
 def validate_transactions(transactions: list[dict]) -> dict:
+    validate_schema(BankTransactions, transactions, "bank transactions")
     seen = {}
     duplicates = []
     for index, transaction in enumerate(transactions, 1):

@@ -167,7 +167,7 @@ class ObligationTests(unittest.TestCase):
             content = {f'output/reconciled/{d["bank"].lower()}_reconciled.json': d for d in data[0]}
             content.update({'output/relationships/relationships.json': data[1],
                             'output/classification/effective_transactions.json': data[2],
-                            'output/audit/coverage_audit.json': dict(data[3], verification={'source_sha256': {}})})
+                            'output/audit/coverage_audit.json': data[3]})
             for name, value in content.items():
                 p = root / name; p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(json.dumps(value), encoding='utf-8')

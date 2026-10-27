@@ -10,6 +10,9 @@ import re
 
 from .obligations import build as build_origins, party_pattern
 from .reconcile import digest
+from .output_models import (ClassificationOutput, CoverageOutput, ObligationsOutput, ObligationsFileOutput,
+                            ReconciliationOutput, RelationshipsOutput, SettlementsOutput, SettlementsFileOutput)
+from .schema_validation import parse_document, validate_schema
 from .relationships import counterparty_key, flatten, mentions_party, text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -359,6 +362,7 @@ def derive(origins, records, relationships, classification):
 
 
 def build(documents, relationships, classification, audit, origins):
+    validate_schema(ObligationsOutput, origins, "settlements obligations input")
     rebuilt = build_origins(documents, relationships, classification, audit)
     if rebuilt != {k: v for k, v in origins.items() if k != 'verification'}:
         raise ValueError('stale or altered obligation origins')
@@ -380,6 +384,10 @@ def build(documents, relationships, classification, audit, origins):
 
 
 def validate(result, origins, records, relationships, classification):
+    validate_schema(SettlementsOutput, result, "settlements output")
+    validate_schema(ObligationsOutput, origins, "settlements obligations input")
+    validate_schema(RelationshipsOutput, relationships, "settlements relationships input")
+    validate_schema(ClassificationOutput, classification, "settlements classification input")
     # Re-derive decisions to validate financial evidence as well as output shape.
     expected = derive(origins, records, relationships, classification)
     if any(result[k] != v for k, v in expected.items()):
@@ -409,16 +417,17 @@ def run(root=ROOT):
         'output/relationships', 'output/classification', 'output/obligations')
         for p in (root / folder).rglob('*') if p.is_file()] + [root / 'output/audit/coverage_audit.json'])
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected}
-    def read(path):
-        return json.loads((root / path).read_text(encoding='utf-8'))
-    origins = read('output/obligations/obligations.json')
+    def read(path, schema):
+        return parse_document((root / path).read_bytes(), schema, str(root / path))
+    origins = read('output/obligations/obligations.json', ObligationsFileOutput)
     for name, expected in origins['verification']['protected_file_sha256'].items():
         if hashes.get(name) != expected:
             raise ValueError('stale obligation source snapshot: ' + name)
-    docs = [read(f'output/reconciled/{b}_reconciled.json') for b in ('kotak', 'sbi')]
-    rels = read('output/relationships/relationships.json'); classification = read('output/classification/effective_transactions.json')
-    result = build(docs, rels, classification, read('output/audit/coverage_audit.json'), origins)
+    docs = [read(f'output/reconciled/{b}_reconciled.json', ReconciliationOutput) for b in ('kotak', 'sbi')]
+    rels = read('output/relationships/relationships.json', RelationshipsOutput); classification = read('output/classification/effective_transactions.json', ClassificationOutput)
+    result = build(docs, rels, classification, read('output/audit/coverage_audit.json', CoverageOutput), origins)
     result['verification'] = {'source_sha256': hashes, 'sources_unchanged': True}
+    validate_schema(SettlementsFileOutput, result, 'settlements file output')
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + '\n'
     validate(json.loads(encoded), origins, flatten(docs), rels, classification)
     if any(hashlib.sha256(p.read_bytes()).hexdigest() != hashes[str(p.relative_to(root))] for p in protected):

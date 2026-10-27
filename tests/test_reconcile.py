@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import unittest
 
-from tests.support import temporary_directory
+from tests.support import temporary_directory, event_document
 from src.reconcile import digest, reconcile, run, validate_result, reference_precision
 
 
@@ -29,7 +29,7 @@ def document(bank, indices):
             currency=None, merchant=None, payee=None, payer=None, category=None, subcategory=None,
             description=None, purpose_context=None, entities=[], components=[], matching_clues=[],
             confidence='low', ambiguities=['Unknown purpose'], additional_context=[]))
-    return dict(bank='KOTAK', source_rows=rows, events=events, source_rows_sha256=digest(rows))
+    return event_document('KOTAK', rows, events)
 
 
 def refresh(doc):

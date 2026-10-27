@@ -1,5 +1,23 @@
 # Project state
 
+## Phase 3R.2B complete: strict output schemas
+
+Added `src/output_models.py` with reusable strict Pydantic contracts for reconciliation, relationships, effective classification, obligation origins and settlements. Supporting contracts cover normalized bank records, saved event envelopes (including approved local-correction history) and the coverage audit consumed by obligations. Existing versions remain unchanged: events `1.0`, reconciliation `3A.2`, relationships `3B.1`, classification `3C.1.1`, coverage `3C.1A.1`, obligations `3C.2.1` and settlements `3C.3.2`.
+
+Added `src/schema_validation.py` for non-mutating validation and contextual JSON errors. File runners validate loaded documents before calculations/writes; builders and existing validators validate generated structures. Controlled treatments, types, statuses, rules and confirmation methods use Literals. Nested evidence, references, IDs, fingerprints, dates, decimal strings, strict booleans and counts are checked; extra fields, missing required fields and unsupported versions are rejected. File-level obligation/settlement contracts require verification metadata, while pure builders may omit it. Existing financial invariants, replay checks and calculations remain in place.
+
+Validation returns the original data; model defaults/coercions are never written into it. Legitimate null semantics, unknown principals, unresolved candidates, UNASSESSED/null outstanding balances, signed adjustments and original correction history remain supported. Free-form semantic descriptions/categories are not forced into financial enums. No legacy values were reinterpreted and no existing saved output required correction.
+
+Verification completed on 2026-10-27:
+
+- **165 tests passed: all 142 existing tests plus 23 schema/boundary regressions.** Original test methods and assertion ASTs are preserved; synthetic envelopes were completed with required version/provenance fields.
+- Negative tests cover invalid versions, IDs, controlled values, field/container types, dates, monetary precision, boolean coercion, missing/extra nested fields, fingerprints and lifecycle/null consistency. Malformed JSON, missing/unsupported versions and wrong document containers were tested at all five loaded stage boundaries; existing outputs and all fixture files remained unchanged after rejection. Invalid bank records also cannot overwrite outputs.
+- All **154 bank transactions, 85 semantic events, 27 relationships, eight obligation origins and five repayment allocations** validate. The financial integrity audit passed **14 checks**, with zero failures.
+- Regenerated bank, reconciliation, relationship, classification, coverage-audit, obligation, settlement and integrity outputs using existing runners. **All 12 output JSON files are byte-identical to the original retained baseline**: ten regenerated files plus the two existing event files, which were validated/reused without API calls. Comparison preserves existing Windows CRLF, key order and UTF-8 formatting.
+- SHA-256 and inventory checks confirm **all 19 input/output files unchanged**, including all seven private source files. The original baseline and verification summary remain under ignored `tmp/phase3r2b/`.
+
+No financial-rule changes, ID redesign, output-version/format changes, new dependencies, CLI changes, API calls or PostgreSQL work. **Stop before Phase 3R.2C (durable IDs).**
+
 ## Phase 3R.2A complete: reproducible tests
 
 The read-only 3R.1 architecture audit found that 36 tests depended on an untracked `tests/fixtures/` directory, shared builders were imported from other test modules, and default discovery/individual-module imports were unreliable. This checkpoint repairs only test portability.

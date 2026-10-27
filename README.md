@@ -19,6 +19,40 @@ and clean them up afterward. No existing `tests/fixtures/`, private `input/` or
 `output/`, `.env`, or API key is required. API interactions are mocked. Shared
 builders live in `tests/support.py`; test modules do not import each other.
 
+## Strict financial output contracts
+
+`src/output_models.py` defines reusable Pydantic contracts; `src/schema_validation.py`
+validates loaded inputs and generated outputs without replacing the original dictionaries.
+Use `validate_schema(Model, document, stage)` for in-memory values and
+`parse_document(content, Model, path)` for JSON text/bytes. Errors identify the stage or
+path and failing field. Matching, financial calculations and existing invariant checks
+remain separate from structural validation.
+
+| Document | Model | Accepted version |
+| --- | --- | --- |
+| Saved events | `EventDocument` | `1.0` |
+| Reconciliation | `ReconciliationOutput` | `3A.2` |
+| Relationships | `RelationshipsOutput` | `3B.1` |
+| Effective classification | `ClassificationOutput` | `3C.1.1` |
+| Coverage audit | `CoverageOutput` | `3C.1A.1` |
+| Obligation origins | `ObligationsOutput` | `3C.2.1` |
+| Settlements | `SettlementsOutput` | `3C.3.2` |
+
+Normalized bank files retain their existing unversioned array format, validated by
+`BankTransaction`/`BankTransactions`. `ObligationsFileOutput` and
+`SettlementsFileOutput` additionally require file-verification metadata; pure builders
+do not manufacture that metadata. Missing/unsupported document versions, malformed
+records, unrecognized controlled values and extra fields are rejected before saving.
+Unknown/null meanings, unresolved relationships, unknown principals, UNASSESSED and
+signed settlement adjustments remain valid where their contracts allow them.
+
+Validation does not serialize models back into financial files or insert default keys.
+Existing output versions, IDs, hashes, approved correction history and formatting are
+preserved. Schema validity complements financial evidence checks; it does not prove
+that a semantic interpretation is correct. New versions require an explicit compatible
+contract or migration, never an automatic reinterpretation. Run the focused regressions
+with `python -m unittest tests.test_output_schemas -v`.
+
 Planned direction:
 
 ```text

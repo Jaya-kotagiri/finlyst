@@ -13,6 +13,10 @@ from .kotak import parse_kotak
 from .sbi import parse_sbi
 from .notes import read_notes
 from .obligations import build as build_origins
+from .output_models import (BankTransactions, ClassificationOutput, CoverageOutput, EventDocument,
+    ReconciledDocuments, ReconciliationOutput, RelationshipsOutput, ObligationsOutput,
+    ObligationsFileOutput, SettlementsOutput, SettlementsFileOutput)
+from .schema_validation import parse_document, validate_schema
 from .reconcile import digest, reconcile, validate_inputs
 from .relationships import derive as relate, flatten, upi_reference
 from .settlements import build as settle, chronological
@@ -159,6 +163,7 @@ def audit_layers(banks, events, documents, relationships, classification, covera
     check('stage_2_schema_and_source_facts', semantics)
 
     def reconciliation():
+        validate_schema(ReconciledDocuments, documents, "integrity documents input")
         seen, linked = [], []
         for d in documents:
             bank = d['bank'].lower()
@@ -173,6 +178,7 @@ def audit_layers(banks, events, documents, relationships, classification, covera
     check('reconciliation_coverage_and_full_meanings', reconciliation)
 
     def relationship_check():
+        validate_schema(RelationshipsOutput, relationships, "integrity relationships input")
         require(relate(documents) == relationships, 'relationships differ from source-supported derivation')
         seen = set(); transfers = 0
         for rel in relationships['relationships']:
@@ -187,6 +193,7 @@ def audit_layers(banks, events, documents, relationships, classification, covera
     check('relationship_support_and_uniqueness', relationship_check)
 
     def classification_check():
+        validate_schema(ClassificationOutput, classification, "integrity classification input")
         require(classify(documents, relationships) == classification, 'classification replay mismatch')
         records = flatten(documents)
         for row in classification['transactions']:
@@ -202,6 +209,7 @@ def audit_layers(banks, events, documents, relationships, classification, covera
     check('classification_semantics_and_counting', classification_check)
 
     def coverage_check():
+        validate_schema(CoverageOutput, coverage, "integrity coverage input")
         rows = coverage['transactions']
         require(len(rows) == len(bank_rows) and {r['transaction_id'] for r in rows} == set(bank_ids), 'coverage audit missing bank rows')
         records = flatten(documents)
@@ -216,6 +224,7 @@ def audit_layers(banks, events, documents, relationships, classification, covera
     check('notes_coverage_vs_processing_failure', coverage_check)
 
     def obligation_check():
+        validate_schema(ObligationsOutput, origins, "integrity origins input")
         require(build_origins(documents, relationships, classification, coverage) == without_verification(origins), 'obligation origin replay mismatch')
         keys = [(tuple(o['originating_transaction_ids']), o['direction'], o['counterparty']) for o in origins['obligations']]
         require(len(keys) == len(set(keys)), 'duplicate origin/party claim')
@@ -223,6 +232,7 @@ def audit_layers(banks, events, documents, relationships, classification, covera
     check('obligation_origin_amounts_and_provenance', obligation_check)
 
     def settlement_check():
+        validate_schema(SettlementsOutput, settlements, "integrity settlements input")
         require(settle(documents, relationships, classification, coverage, origins) == without_verification(settlements), 'settlement source/evidence replay mismatch')
         return settlements['report']
     check('settlement_decisions_and_provenance', settlement_check)
@@ -268,15 +278,15 @@ def run(root=ROOT):
     protected = sorted([p for folder in folders for p in (root / folder).rglob('*') if p.is_file()]
                        + [root / 'output/audit/coverage_audit.json'])
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected}
-    def read(path): return json.loads((root / path).read_text(encoding='utf-8'))
-    banks = {b: read(f'output/bank/{b}_transactions.json') for b in ('kotak', 'sbi')}
-    events = {b: read(f'output/events/{b}_events.json') for b in banks}
-    documents = [read(f'output/reconciled/{b}_reconciled.json') for b in banks]
-    relationships = read('output/relationships/relationships.json')
-    classification = read('output/classification/effective_transactions.json')
-    coverage = read('output/audit/coverage_audit.json')
-    origins = read('output/obligations/obligations.json')
-    settlements = read('output/settlements/settlements.json')
+    def read(path, schema): return parse_document((root / path).read_bytes(), schema, str(root / path))
+    banks = {b: read(f'output/bank/{b}_transactions.json', BankTransactions) for b in ('kotak', 'sbi')}
+    events = {b: read(f'output/events/{b}_events.json', EventDocument) for b in banks}
+    documents = [read(f'output/reconciled/{b}_reconciled.json', ReconciliationOutput) for b in banks]
+    relationships = read('output/relationships/relationships.json', RelationshipsOutput)
+    classification = read('output/classification/effective_transactions.json', ClassificationOutput)
+    coverage = read('output/audit/coverage_audit.json', CoverageOutput)
+    origins = read('output/obligations/obligations.json', ObligationsFileOutput)
+    settlements = read('output/settlements/settlements.json', SettlementsFileOutput)
     checks = audit_layers(banks, events, documents, relationships, classification, coverage, origins, settlements, True)
     try:
         for bank, parser in (('kotak', parse_kotak), ('sbi', parse_sbi)):
