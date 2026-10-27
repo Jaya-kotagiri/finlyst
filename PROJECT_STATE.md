@@ -1,5 +1,63 @@
 # Project state
 
+## Phase 3D.1 complete: PostgreSQL foundation
+
+Added `src/db.py`, `src/local_postgres.py`, `migrations/001_foundation.sql`,
+`tests/test_db.py` and `tests/run_database_tests.py`. Added the pinned Psycopg 3 binary
+adapter (`psycopg[binary]==3.3.6`); no ORM or migration framework. Existing financial
+modules, Pydantic contracts, durable-ID generation and unified JSON CLI are unchanged.
+
+Installed the official PostgreSQL **18.6** Windows binaries under ignored
+`.local/postgres/runtime/`, initialized a project-local cluster and created the empty
+`finlyst` database. It listens only on **127.0.0.1:55432**, uses SCRAM authentication,
+and runs as an explicitly managed background process, not an installed Windows service.
+The application/migration owner is non-superuser with no CREATEDB or CREATEROLE privileges.
+Generated credentials are stored only in ignored `.env.db` and `.local/postgres/admin.json`;
+existing API environment configuration was not read/changed for database operations.
+Environment-based FINLYST_DB_* settings override the private database configuration.
+
+Migration 001 is applied, with no pending migrations. The 25-table `finlyst` schema
+stores permanent UUIDs, birth-seed identity metadata, separate interpretation revisions,
+source artifacts/full JSON/schema versions, source-scoped legacy aliases and decision
+history. Typed revision tables cover accounts, bank facts, events, relationships, effective
+classifications, obligations, settlements and allocations, with relational participant and
+provenance links. All ten registry kinds remain representable. Composite foreign keys
+check record kinds and revision ownership; evidence hashes are not forced globally unique.
+
+Money uses exact checked NUMERIC domains, with no silent cent rounding or nonfinite values.
+Unknown principals/flags stay nullable; UNASSESSED outstanding remains null, not zero.
+CLOSED requires known zero, and inferred confirmation remains distinct from high evidence
+strength. Full source JSON retains nested evidence and local correction history. Future
+import must select coherent source/revision snapshots and retain existing financial validation;
+this slice does not implement import, active-version selection or new financial calculations.
+
+Migrations are versioned SQL with transactional DDL/history, an advisory lock and recorded
+checksums normalized for Git line endings. Repeat application is a no-op; modified applied
+files are rejected. A failed synthetic migration rolled back both DDL and ledger changes.
+The local setup also passed stop/start and repeat-init checks. A Windows detached-process
+pipe-handle issue found during initial startup was corrected in the helper before verification.
+
+Verification completed on 2026-10-27:
+
+- **239 tests passed with PostgreSQL integration enabled: 214 existing + 25 new; no skips.**
+  New coverage includes environment precedence/redacted errors, migrations/checksum drift,
+  rollback, exact money, null/UNASSESSED/CLOSED contracts, UUID/type/revision foreign keys,
+  relationships/allocations, source scopes, corrections across revisions, provenance and
+  compatibility with controlled values in the existing Pydantic models.
+- Integration tests used a freshly created disposable database, synthetic records only,
+  per-test rollbacks and cleanup. **No test databases remain. All 25 application tables
+  have zero rows.** Only the separate migration ledger contains its version record.
+- All **20 protected files** match `tmp/phase3d1/baseline.json`: seven private inputs,
+  twelve financial JSON outputs and the identity registry. Their inventory is unchanged.
+  Existing offline validation still passes **14 integrity checks and 844 identity mappings**.
+  The ignored verification report is `tmp/phase3d1/verification.json`.
+- Existing input/output/environment ignore rules are preserved; `.local/` is additionally
+  ignored. Credentials, server binaries/data/logs and generated financial data are excluded
+  from Git. README documents local setup, configuration, migrations and integration testing.
+
+**No financial import, API call, financial-rule change or dashboard integration.
+Stop before Phase 3D.2.** The local database foundation is ready for review.
+
 ## Phase 3R.3 complete: unified pipeline CLI
 
 Added `src/cli.py` using standard-library argparse and existing Python stage functions.

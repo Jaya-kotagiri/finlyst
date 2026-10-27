@@ -3,3 +3,5 @@ openpyxl==3.1.5
 openai==3.26.0
 pydantic==2.13.5
 python-dotenv==1.2.4
+# PostgreSQL adapter; database access is separate from the JSON pipeline.
+psycopg[binary]==3.3.6

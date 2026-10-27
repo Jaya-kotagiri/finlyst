@@ -1,6 +1,7 @@
 # Private source files and generated financial data
 /input/
 /output/
+/.local/
 
 # Environment variables, local secrets, and credentials
 .env

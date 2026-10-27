@@ -75,6 +75,8 @@ checks for future datasets. No financial rules, IDs, classifications or evidence
 
 ## Running the synthetic tests
 
+The PostgreSQL foundation and its opt-in integration test command are documented below.
+
 From the project root, install the pinned dependencies in a Python virtual environment
 with `python -m pip install -r requirements.txt`, then run:
 
@@ -123,6 +125,130 @@ preserved. Schema validity complements financial evidence checks; it does not pr
 that a semantic interpretation is correct. New versions require an explicit compatible
 contract or migration, never an automatic reinterpretation. Run the focused regressions
 with `python -m unittest tests.test_output_schemas -v`.
+
+## PostgreSQL foundation (Phase 3D.1)
+
+The database is separate from the JSON pipeline. `src/db.py` provides configuration,
+connections and versioned SQL migrations; no ORM, importer or automatic pipeline database
+writes exist. `python -m src.cli run --offline` continues to use the original JSON stages.
+
+The verified local instance is PostgreSQL **18.6**, listening only on `127.0.0.1:55432`.
+The `finlyst` database has the foundation schema and **zero financial rows**. The application
+owner `finlyst_owner` has no superuser, database-creation or role-creation privileges.
+The bootstrap administrator is separate. Neither role's password is in Git.
+
+For a new Windows checkout, install requirements and obtain the PostgreSQL binaries from
+the [official PostgreSQL Windows download page](https://www.postgresql.org/download/windows/)
+or its linked [EDB archive page](https://www.enterprisedb.com/download-postgresql-binaries).
+The archive used for this checkpoint is available at the fixed EDB link below. Run these
+commands from the repository root; runtime files stay under ignored `.local/` and `tmp/`:
+
+```powershell
+python -m pip install -r requirements.txt
+New-Item -ItemType Directory -Force .local/postgres/runtime, tmp/postgres-download
+Invoke-WebRequest -Uri 'https://sbp.enterprisedb.com/getfile.jsp?fileid=1260609' -OutFile tmp/postgres-download/postgresql.zip
+Expand-Archive -LiteralPath tmp/postgres-download/postgresql.zip -DestinationPath .local/postgres/runtime
+python -m src.local_postgres init
+python -m src.db migrate
+python -m src.db check
+python -m src.db status
+```
+
+If the binaries already exist, start at `init`. An installed PostgreSQL binary directory
+can instead be supplied with `--bin-dir`. The local helper initializes SCRAM password
+authentication, generates independent random credentials, creates the empty database and
+starts a background server; it does not install a Windows service or import financial data.
+Repeated `init` preserves the cluster and credentials. Manage it explicitly with:
+
+```powershell
+python -m src.local_postgres status
+python -m src.local_postgres stop
+python -m src.local_postgres start
+```
+
+The cluster/runtime/logs are under `.local/postgres/`. Keep the ignored `.env.db` and
+`.local/postgres/admin.json` private. Existing `.env` API configuration is not read or
+modified by database access. Environment variables override `.env.db`:
+
+| Variable | Meaning |
+| --- | --- |
+| `FINLYST_DB_HOST` | Host; default `127.0.0.1` |
+| `FINLYST_DB_PORT` | Port; default `55432` |
+| `FINLYST_DB_NAME` | Required database name |
+| `FINLYST_DB_USER` | Required login role |
+| `FINLYST_DB_PASSWORD` | Required private password |
+| `FINLYST_DB_SSLMODE` | libpq SSL mode; generic default `prefer`; local bootstrap uses `disable` on loopback |
+| `FINLYST_DB_CONNECT_TIMEOUT` | Connection timeout, 1–60 seconds; default 5 |
+
+`src.db` commands accept `--root` to select the directory containing `.env.db`. A pre-existing
+PostgreSQL instance can use the same configuration after an administrator creates a database
+owned by the configured migration role. Error messages omit credentials and SQL row values.
+
+### Migration and storage contracts
+
+`migrations/001_foundation.sql` creates the `finlyst` schema. The migration ledger is
+`public.finlyst_schema_migrations`, with version, filename, checksum and application time.
+Migrations run in order under a database-scoped advisory lock; all pending DDL and ledger
+entries commit together or roll back together. Reruns are no-ops. Edited/missing applied
+migrations are rejected. Checksums normalize LF/CRLF only. Add a new numbered migration for
+changes; do not edit an applied file. Migration SQL must leave transaction control to the runner.
+`status` is read-only and does not create the ledger on a fresh database.
+
+| Tables | Stored responsibility |
+| --- | --- |
+| `durable_records`, `identity_keys` | Existing permanent UUIDs and identity evidence, including ambiguous keys |
+| `interpretation_revisions`, `revision_references` | Interpretation fingerprints and durable parent links |
+| `source_artifacts`, `source_documents`, `source_locations`, `source_dependencies` | Source hashes, full JSON payloads, original schema versions, locations and upstream evidence |
+| `legacy_mappings`, `mapping_evidence`, `identity_decisions`, `decision_references`, `decision_candidates` | Source-scoped legacy IDs and ordered resolution/ambiguity history |
+| `accounts`, `bank_transactions`, `semantic_events`, `relationships` | Typed revisions of bank facts and interpretations |
+| `effective_classifications`, `classification_relationships` | Source-snapshot-specific effective views without inventing a classification identity |
+| `obligations`, `obligation_links`, `settlements`, `allocations`, `settlement_allocations`, `relationship_transactions` | Claims, evidence, participant links and assessed settlement revisions |
+
+UUIDs are supplied from the existing registry; the database does not generate replacement
+financial IDs. Composite foreign keys prevent an account/transaction/obligation reference
+from pointing to the wrong record kind or a revision belonging to another record. Typed
+financial rows are keyed by revision ID so changed names/statuses do not overwrite identity.
+Deletes are restricted by foreign keys; there are no cascading ledger deletions.
+
+Money uses exact `NUMERIC` domains, rejecting nonfinite values and values that cannot be
+represented exactly to two decimal places. Positive/nonnegative constraints are separate
+from signed bank balances, adjustments and residuals. No unknown amount defaults to zero.
+`UNASSESSED` requires null outstanding; unknown principal requires `UNASSESSED`; `CLOSED`
+requires known zero outstanding. Evidence strength and confirmation method remain separate.
+Unversioned bank documents retain a null schema version. Full JSON preserves nested evidence,
+local event corrections, ambiguities and future fields without inventing interpretations.
+See PostgreSQL's [numeric type documentation](https://www.postgresql.org/docs/current/datatype-numeric.html)
+for why checked, unconstrained `NUMERIC` is used instead of a scale-coercing column.
+
+The foundation enforces structural storage contracts. Existing Pydantic and financial
+validators remain authoritative for rule-specific evidence, reconciliation and ledger
+capacity. The future importer must select coherent source snapshots and revision IDs;
+never sum all historical revisions or choose a financial truth by insertion order. All ten
+registry record kinds are supported, including unresolved review items through identity,
+revision/reference and complete source-document tables. No snapshot selection, settlement
+recalculation or import implementation is included in 3D.1.
+
+### Database tests
+
+```powershell
+# No database required: ordinary tests + database unit tests; integration tests skip explicitly.
+python -B -m unittest discover -s tests -q
+
+# Local bootstrap cluster running: create an isolated database, run the COMPLETE suite, then drop it.
+python -B -m tests.run_database_tests
+```
+
+The second command uses the private local bootstrap administrator only to create/drop a
+fresh `finlyst_test_<random>` database owned by the application role. Tests insert synthetic
+records only and roll them back. On another PostgreSQL setup, pre-create a disposable database
+whose name starts `finlyst_test_`, set `FINLYST_TEST_DB_NAME` plus the normal connection variables,
+and run discovery. Never use the application database for these tests. The verified checkpoint
+passed **239 tests (214 existing + 25 database tests), with no skips**. Migration rollback,
+checksum drift, exact decimals, foreign keys, reference relationships, revision continuity,
+schema compatibility, source-scoped legacy IDs and uncertainty all passed.
+
+All 20 protected input/output files remain unchanged; all 25 application tables are empty.
+**Stop before 3D.2: no financial data has been imported.**
 
 Planned direction:
 
