@@ -1,5 +1,82 @@
 # Project state
 
+## Phase 3D.2 complete: PostgreSQL data import
+
+Completed and verified on **2026-10-30**. Added `src/db_import.py`,
+`src/db_import_validation.py`, `src/db_projection.py`, `migrations/002_import_snapshots.sql`,
+`tests/import_support.py` and four focused test modules. The unified CLI now exposes
+`python -m src.cli import-db [--root ...]`; ordinary pipeline runs remain unchanged and
+never import automatically. Updated foundation migration tests and README. No new dependency.
+
+The importer consumes validated JSON and the existing durable registry without generating
+financial IDs or changing meaning. It checks schemas, deterministic derivations, the independent
+financial ledger, source fingerprints, current interpretation hashes and source-derived durable
+references. Saved registry self-consistency alone is insufficient: regressions now reject
+internally consistent but source-incompatible revision hashes or event links.
+
+Migration 002 retains coherent source/revision/decision membership and original source
+observations. Imports are append-only, guarded by an advisory lock and one transaction;
+conflicting immutable rows fail rather than overwrite history. Full active SQL rows and links
+must equal the validated projection before commit, including detection of unsupported extra
+links. A final source-inventory check rolls back if files changed. Allocation evidence revisions
+can coexist under an unchanged settlement revision; both endpoints must be selected through
+the same snapshot to avoid double-counting historical edges.
+
+The actual local `finlyst` database now contains one verified snapshot:
+
+| Records | Count |
+| --- | ---: |
+| Accounts | 2 |
+| Bank transactions | 154 |
+| Semantic events | 85 |
+| Financial relationships | 27 |
+| Effective classifications | 154 |
+| Obligation origins | 8 |
+| Settlement views | 8 |
+| Allocations | 5 |
+| Permanent identities / interpretation revisions | 297 / 297 |
+| Legacy mappings / original source observations | 844 / 844 |
+| Original JSON documents | 11 |
+
+Verified every projected database row and its links against the validated source snapshot.
+Bank counts and exact debit/credit totals agree with JSON for both accounts. All classifications
+are preserved, including 68 unknown treatments with nullable income/expense flags. Three
+obligations have unknown principal; all eight origins retain UNASSESSED origin-stage settlement
+status. The separate settlement views remain **3 CLOSED / 5 UNASSESSED**, with all five
+UNASSESSED outstanding amounts null. Five allocations total **INR 3,345.00**, with zero
+adjustment. Dad's **SBI_0025 -> SBI_0026**, INR 3,000.00, remains CLOSED with evidence
+strength **high** and confirmation method **inferred**, not explicit confirmation.
+
+Verification:
+
+- **276 tests passed, no skips:** all 239 previous tests plus 37 new regressions.
+  Disposable PostgreSQL tests exercise repeat imports, invalid input rejection, late-write
+  and source-change rollback, immutable conflicts, unsupported links, duplicate prevention,
+  cross-account reimbursement context, exact Decimal values, null/UNASSESSED, overlapping
+  legacy renumbering and retained name/status/allocation-evidence revisions.
+- Applied migration 002 to the real database. First explicit CLI import inserted 6,809
+  relational rows including provenance/link tables. The repeated import inserted **zero**
+  rows; every stored row, timestamp and snapshot identity remained unchanged.
+- All **20 protected files** match `tmp/phase3d2/baseline.json` and the 3D.1 baseline.
+  All **12 financial JSON outputs are byte-identical** to the retained original baseline;
+  private source inputs and the durable registry remain unchanged. The verification report
+  is `tmp/phase3d2/verification.json`. No disposable test databases remain.
+- Existing ignore rules remain intact. Credentials, database runtime files, private inputs,
+  generated financial JSON and verification artifacts are excluded from the checkpoint.
+
+Full source JSON/observations preserve original references, source rows, approved event
+corrections and provenance. Typed revision JSON deliberately follows the existing identity
+fingerprint contract; it is not a lossless replacement for source observations. Historical
+registry metadata is retained, but absent older source payloads are never reconstructed.
+The current snapshot has complete source payloads. Preserve database/source backups for
+future history. No latest-snapshot policy or automatic database synchronization is introduced.
+
+Financial questions remain unchanged: unresolved train-ticket allocation, uncertain original
+group-meal/electricity shares, four annotated financial-term ambiguities, and incomplete future
+notes coverage. Import does not turn these uncertainties into facts or zero balances.
+
+**3D.2 is complete. Stop before 3D.3. No new AI calls, financial-rule changes, dashboard or API integration.**
+
 ## Phase 3D.1 complete: PostgreSQL foundation
 
 Added `src/db.py`, `src/local_postgres.py`, `migrations/001_foundation.sql`,

@@ -16,11 +16,14 @@ def parser():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument('--root', type=Path, default=ROOT, help='project directory (default: repository root)')
     commands = cli.add_subparsers(dest='command', required=True)
-    for name in ('run', *STAGES, 'validate'):
+    for name in ('run', *STAGES, 'validate', 'import-db'):
         command = commands.add_parser(name, help='validate saved outputs without writing' if name == 'validate'
+                                      else 'explicitly import validated JSON into PostgreSQL' if name == 'import-db'
                                       else 'run the pipeline or a contiguous range' if name == 'run'
                                       else f'run the {name} stage')
         command.add_argument('--root', type=Path, default=argparse.SUPPRESS, help='project directory')
+        if name == 'import-db':
+            continue
         if name == 'validate':
             command.add_argument('--all', required=True, action='store_true', help='check all stages and identity mappings')
             continue
@@ -169,6 +172,10 @@ def main(argv=None):
             print(f'[{index}/{len(stages)}] {stage}', flush=True)
             if stage == 'validate':
                 validate_all(root)
+            elif stage == 'import-db':
+                from .db_import import run
+                result = run(root)
+                print(json.dumps(result, indent=2))
             else:
                 selected = getattr(args, 'bank', 'all')
                 run_stage(stage, root, BANKS if selected == 'all' else (selected,), getattr(args, 'allow_api', False))

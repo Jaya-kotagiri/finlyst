@@ -167,20 +167,24 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
     def test_migrations_are_idempotent_and_history_is_recorded(self):
         with db.connect(environ=self.env) as connection:
             self.assertEqual(db.migrate(connection), [])
-            self.assertEqual(db.status(connection), {'applied':[1], 'pending':[]})
+            self.assertEqual(db.status(connection), {'applied':[m['version'] for m in db.migration_files()], 'pending':[]})
 
     def test_migration_error_rolls_back_ddl_and_history(self):
         with temporary_directory() as temp:
             directory = Path(temp)
-            shutil.copyfile(db.MIGRATIONS/'001_foundation.sql', directory/'001_foundation.sql')
-            (directory/'002_failure.sql').write_text('CREATE TABLE public.synthetic_probe (id integer); SELECT undefined_finlyst_function();', encoding='utf-8')
+            migrations = db.migration_files()
+            for migration in migrations:
+                shutil.copyfile(db.MIGRATIONS/migration['name'], directory/migration['name'])
+            (directory/f'{len(migrations)+1:03d}_failure.sql').write_text('CREATE TABLE public.synthetic_probe (id integer); SELECT undefined_finlyst_function();', encoding='utf-8')
             with db.connect(environ=self.env) as connection:
                 with self.assertRaises(psycopg.Error): db.migrate(connection, directory)
                 self.assertIsNone(connection.execute("SELECT to_regclass('public.synthetic_probe')").fetchone()[0])
-                self.assertEqual(connection.execute('SELECT count(*) FROM public.finlyst_schema_migrations').fetchone()[0], 1)
+                self.assertEqual(connection.execute('SELECT count(*) FROM public.finlyst_schema_migrations').fetchone()[0], len(migrations))
 
     def test_applied_checksum_tampering_is_rejected(self):
         with temporary_directory() as temp:
+            for migration in db.migration_files():
+                shutil.copyfile(db.MIGRATIONS/migration['name'], Path(temp)/migration['name'])
             path = Path(temp)/'001_foundation.sql'
             path.write_text((db.MIGRATIONS/'001_foundation.sql').read_text()+'\n-- altered\n', encoding='utf-8')
             with db.connect(environ=self.env) as connection:

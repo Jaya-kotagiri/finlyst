@@ -1,4 +1,4 @@
-"""PostgreSQL configuration and transactional SQL migrations; no financial importer."""
+"""PostgreSQL configuration and transactional SQL migrations (import is separate)."""
 
 import argparse
 import hashlib

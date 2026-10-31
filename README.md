@@ -129,11 +129,12 @@ with `python -m unittest tests.test_output_schemas -v`.
 ## PostgreSQL foundation (Phase 3D.1)
 
 The database is separate from the JSON pipeline. `src/db.py` provides configuration,
-connections and versioned SQL migrations; no ORM, importer or automatic pipeline database
-writes exist. `python -m src.cli run --offline` continues to use the original JSON stages.
+connections and versioned SQL migrations. Phase 3D.2 adds the explicit importer described
+below; there is no ORM or automatic pipeline database write. `python -m src.cli run --offline`
+continues to use the original JSON stages.
 
 The verified local instance is PostgreSQL **18.6**, listening only on `127.0.0.1:55432`.
-The `finlyst` database has the foundation schema and **zero financial rows**. The application
+The `finlyst` database now contains the verified Phase 3D.2 financial snapshot. The application
 owner `finlyst_owner` has no superuser, database-creation or role-creation privileges.
 The bootstrap administrator is separate. Neither role's password is in Git.
 
@@ -222,7 +223,7 @@ for why checked, unconstrained `NUMERIC` is used instead of a scale-coercing col
 
 The foundation enforces structural storage contracts. Existing Pydantic and financial
 validators remain authoritative for rule-specific evidence, reconciliation and ledger
-capacity. The future importer must select coherent source snapshots and revision IDs;
+capacity. The importer selects coherent source snapshots and revision IDs;
 never sum all historical revisions or choose a financial truth by insertion order. All ten
 registry record kinds are supported, including unresolved review items through identity,
 revision/reference and complete source-document tables. No snapshot selection, settlement
@@ -248,7 +249,77 @@ checksum drift, exact decimals, foreign keys, reference relationships, revision 
 schema compatibility, source-scoped legacy IDs and uncertainty all passed.
 
 All 20 protected input/output files remain unchanged; all 25 application tables are empty.
-**Stop before 3D.2: no financial data has been imported.**
+The statements above describe the 3D.1 foundation checkpoint. The import checkpoint follows.
+
+## PostgreSQL data import (Phase 3D.2)
+
+With the local server running and the validated JSON files and persistent identity registry
+present, explicitly import them using:
+
+```powershell
+python -m src.db migrate
+python -m src.cli import-db
+python -m src.cli import-db --root D:\finlyst
+```
+
+`import-db` uses the selected root's existing database configuration. It is absent from
+the normal pipeline stage list; `run`, `validate` and `--help` never import. It does not
+accept API permission or regenerate missing outputs. Pending migrations must be applied
+explicitly before importing. Errors return nonzero; database errors omit private row values.
+
+`src/db_import.py` reads and validates the existing snapshot, `src/db_import_validation.py`
+binds source records to their saved interpretation hashes and durable references, and
+`src/db_projection.py` projects typed values without deriving financial meaning. Existing
+Pydantic contracts, deterministic stage replay and independent financial integrity checks
+are reused. Missing, unresolved or inconsistent durable identities reject the import;
+financial uncertainty such as an unknown principal or UNASSESSED settlement remains valid.
+The filesystem entry point retains the existing integrity audit's current-dataset checks.
+
+Migration 002 adds `imported_snapshots`, `snapshot_sources`, `snapshot_records`,
+`snapshot_decisions` and `source_observations`. One successful import stores a deterministic
+snapshot ID, full registry payload, ordered identity decisions, exact source JSON and
+source-scoped records, alongside the typed financial projections. Amounts pass through
+Decimal to NUMERIC. No source file, financial JSON, legacy ID or durable registry is rewritten.
+
+All financial writes share one database transaction and advisory lock. Existing rows must
+agree exactly; the importer never updates or deletes them. Before commit, it compares complete
+active rows and links against the validated projection, including unexpected extra links, and
+checks that the protected source inventory is unchanged. Failure rolls back all writes from
+that import. Repeating unchanged inputs inserts zero rows, including no duplicate snapshot.
+Changed interpretations append revisions and snapshot membership while preserving prior data.
+
+Read financial tables through `snapshot_records` for a chosen returned snapshot ID; there is
+no implicit latest pointer. Select effective classifications using that snapshot's
+`classification` entry in `snapshot_sources`. For `settlement_allocations`, select **both**
+the settlement revision and allocation revision from the same snapshot: allocation evidence
+can change without changing the settlement revision. Summing all historical rows would
+double-count money. The preexisting settlement `classification_effects` overlay remains in
+the full settlements source document and must accompany the base effective classification.
+
+Revision-keyed evidence uses the existing registry's interpretation fingerprint contract,
+which excludes source-specific IDs/hashes/provenance. Exact original references, notes,
+corrections and provenance remain in `source_documents` and `source_observations`, reached
+through `snapshot_sources`/`snapshot_decisions` and source-scoped legacy mappings. Do not
+treat the reduced revision JSON as a replacement for those lossless source records.
+Historical identity metadata is retained even when its old source files are unavailable;
+the importer does not reconstruct absent historical payloads. Preserve original snapshots
+and database backups if full historical financial values will be needed.
+
+Verified current snapshot: **2 accounts, 154 bank transactions, 85 events, 27 relationships,
+154 classifications, 8 obligation origins, 8 settlement views and 5 allocations**, with
+297 permanent records, 844 legacy mappings/source observations and 11 source documents.
+Settlements remain three CLOSED and five UNASSESSED; unknown outstanding amounts stay null.
+Dad's SBI_0025 advance links to SBI_0026 with high evidence strength and **inferred** confirmation.
+
+Verification: `python -B -m tests.run_database_tests` passed **276 tests**, including all
+239 earlier tests and 37 importer/projection/CLI regressions, with no skips. Tests cover
+overlapping imports, source/reference drift, corrupt mappings, exact amounts, nulls,
+cross-account links, historical name/status/evidence revisions, rollback and duplicate prevention.
+The real repeated import inserted zero rows and preserved all stored rows. All 20 protected
+files were unchanged, including byte comparison of the 12 financial JSON files against the
+retained baseline. Private verification evidence is under `tmp/phase3d2/` and remains ignored.
+
+**Stop after 3D.2. No 3D.3, new AI calls, financial-rule changes, dashboard or API integration.**
 
 Planned direction:
 
