@@ -8,6 +8,32 @@ durable references to the exact current documents before database projection.
 from .identities import _semantic, fingerprint, observation_id
 
 
+def validate_contracts(snapshot, registry):
+    """Validate stored shapes without recalculating financial rules or legacy hashes."""
+    from .identities import validate_registry
+    from .output_models import (BankTransactions, EventDocument, ReconciledDocuments,
+        RelationshipsOutput, ClassificationOutput, CoverageOutput, ObligationsOutput, SettlementsOutput)
+    from .schema_validation import validate_schema
+
+    validate_registry(registry)
+    for rows in snapshot['banks'].values():
+        validate_schema(BankTransactions, rows, 'database bank source')
+    for document in snapshot['events'].values():
+        validate_schema(EventDocument, document, 'database event source')
+    for name, schema in [('reconciled', ReconciledDocuments), ('relationships', RelationshipsOutput),
+                         ('classification', ClassificationOutput), ('coverage', CoverageOutput),
+                         ('origins', ObligationsOutput), ('settlements', SettlementsOutput)]:
+        validate_schema(schema, snapshot[name], 'database ' + name + ' source')
+    banks = set(snapshot['banks'])
+    reconciled_banks = [document['bank'].lower() for document in snapshot['reconciled']]
+    if set(snapshot['events']) != banks or set(reconciled_banks) != banks or len(reconciled_banks) != len(banks):
+        raise ValueError('Database source banks do not have exactly one event and reconciliation document each')
+    if any(row['bank'].lower() != bank for bank, rows in snapshot['banks'].items() for row in rows):
+        raise ValueError('Database transaction bank differs from its source role')
+    if any(document['bank'].lower() != bank for bank, document in snapshot['events'].items()):
+        raise ValueError('Database event bank differs from its source role')
+
+
 def validate_current_mappings(snapshot, registry, source_ids):
     """Reject stale/corrupted current mappings; retain historical mappings untouched."""
     observations = {}

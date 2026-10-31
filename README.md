@@ -319,7 +319,63 @@ The real repeated import inserted zero rows and preserved all stored rows. All 2
 files were unchanged, including byte comparison of the 12 financial JSON files against the
 retained baseline. Private verification evidence is under `tmp/phase3d2/` and remains ignored.
 
-**Stop after 3D.2. No 3D.3, new AI calls, financial-rule changes, dashboard or API integration.**
+The 3D.2 import checkpoint is complete. Read-only access is implemented below.
+
+## PostgreSQL read-only queries (Phase 3D.3)
+
+List the imported snapshots, then replace `SNAPSHOT_UUID` with one of the returned IDs:
+
+```powershell
+python -m src.cli db-snapshots
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --view transactions --bank sbi
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --view transactions --date-from 2026-08-01 --date-to 2026-08-31
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --view obligations --status UNASSESSED
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --view relationships
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --view settlements --status CLOSED
+```
+
+`transactions` is the default view. `--record-id` selects a durable UUID, scoped to the
+chosen snapshot and record kind. `--root` selects database configuration as before.
+There is no automatic latest-snapshot selection. Date bounds are inclusive. Transaction
+filters use bank transaction dates; obligation and settlement filters use the originating
+account(s) and **origin date**, not the repayment account or settlement assessment date.
+Relationship filters use participating bank transactions; unresolved candidates do not
+establish participation. Status filtering applies only to obligations and settlements.
+
+`src/db_read.py` exposes `list_snapshots`, `read_snapshot` and `read_view` for Python callers
+with an idle Psycopg connection. Reads use PostgreSQL `REPEATABLE READ READ ONLY` transactions.
+They do not import, migrate, call AI or open financial source files. Commands print results
+to the terminal and do not write output files; normal pipeline commands remain unchanged.
+
+The versioned `3D.3.1` view envelope contains snapshot ID, view name, count and records.
+Records carry durable IDs, revision IDs, source-scoped legacy IDs and full original evidence:
+
+- Transactions include authoritative bank facts, the full matched event, original effective
+  classification, linked relationships and a **separate** settlement effect. The effect applies
+  only to the verified allocation amount; partial repayments never relabel the whole movement.
+- Obligations include the original claim, assessed settlement view and the selected allocation
+  revisions. Unknown principals/outstanding amounts remain null; UNASSESSED remains distinct
+  from confirmed zero. Evidence strength and inferred confirmation remain separate.
+- Relationship and settlement views preserve their complete original records. Provenance
+  includes original source observations and the identity decisions selected for that snapshot.
+
+Before returning a financial view, the reader validates stored schemas, canonical source
+hashes, manifest identity, durable mappings, typed SQL values, active links and retained
+provenance. Reads reject corruption without repairing it. Historical queries select both
+allocation and settlement revisions from the same snapshot, preventing duplicate repayments.
+
+JSONB preserves JSON values but changes object-key order. Some earlier pipeline fingerprints
+depend on original key order, so reading JSONB must not rerun those financial derivations.
+The reader checks the canonical fingerprints captured by the validated import and compares
+all active relational data with a pure projection of those exact values. The import path
+still performs its original financial replay and integrity checks. No hashes, original JSON,
+financial rules or database rows were rewritten to accommodate the reader.
+
+Verification: **301 tests passed with no skips** (276 previous plus 25 read/CLI regressions).
+Real queries preserved all 154 transactions, 85 meanings, 27 relationships, eight obligations
+and eight settlement views. All 30 database-table contents, 20 protected files and 12 baseline
+financial JSON byte comparisons remained unchanged. The private verification report is
+`tmp/phase3d3/verification.json`. No dashboard, API service or automatic synchronization is added.
 
 Planned direction:
 

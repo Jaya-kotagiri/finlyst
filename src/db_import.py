@@ -104,7 +104,6 @@ def observations(snapshot):
 
 def prepare(snapshot, registry, metadata=None):
     """Validate and project before connecting/writing; never allocate new identities."""
-    from .db_import_validation import validate_current_mappings
     from .integrity import audit_layers
 
     snapshot, registry, metadata = deepcopy(snapshot), deepcopy(registry), deepcopy(metadata or {})
@@ -115,6 +114,20 @@ def prepare(snapshot, registry, metadata=None):
     failed = [check['check'] for check in checks if check['status'] != 'PASS']
     if failed:
         raise ValueError('Database import integrity checks failed: ' + ', '.join(failed))
+    return _projection_plan(snapshot, registry, metadata)
+
+
+def _projection_plan(snapshot, registry, metadata=None):
+    """Build SQL expectations for structurally validated, fingerprint-bound sources.
+
+    Import callers MUST use prepare(), which first replays the financial validators.
+    The database reader uses this pure projection for already-imported snapshots:
+    JSONB retains values but cannot replay legacy order-sensitive JSON fingerprints.
+    """
+    from .db_import_validation import validate_current_mappings, validate_contracts
+
+    snapshot, registry, metadata = deepcopy(snapshot), deepcopy(registry), deepcopy(metadata or {})
+    validate_contracts(snapshot, registry)
     docs = documents(snapshot)
     sources = {role: identities.source_id(role.split(':')[0], doc, metadata.get(role, {}).get('content_sha256'))
                for role, doc in docs.items()}

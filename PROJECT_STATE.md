@@ -1,5 +1,67 @@
 # Project state
 
+## Phase 3D.3 complete: read-only PostgreSQL query layer
+
+Completed on **2026-10-31** following the instruction to continue building. No separate
+3D.3 specification existed in the repository, so the next bounded slice implements the
+proposed read-only database query layer, explicit snapshot selection and JSON parity checks.
+
+Added `src/db_read.py`, `tests/test_db_read.py` and `tests/test_db_read_cli.py`.
+The existing CLI now supports `db-snapshots` and `db-read --snapshot UUID`, with transaction,
+obligation, relationship and settlement views plus bank/date/status/durable-ID filters.
+Ordinary pipeline and import commands retain their behavior. No new migration or dependency.
+
+Python callers can list snapshots, reconstruct their full source documents/registry, or
+retrieve structured `3D.3.1` views. Every financial view selects one explicit snapshot;
+no latest pointer or latest-by-time policy is inferred. Database reads use an enforced
+`REPEATABLE READ READ ONLY` transaction and reject pending caller work. They require no
+financial files on disk, invoke no writer/import/migration, and make no AI/API requests.
+
+Transactions retain original bank facts, matched event meaning, base classification,
+relationships and a separate settlement-allocation overlay. Obligations retain their
+original claim, assessed state and the selected allocations. Full original source
+observations and source-scoped identity decisions preserve references, notes and provenance.
+Null principal/outstanding values, UNASSESSED, unresolved relationships and high/inferred
+confirmation are preserved. There is no new financial categorization or balance calculation.
+
+Read checks cover strict source contracts, canonical source fingerprints, registry/manifest
+identity, current mapping hashes, typed SQL parity, exact active links and required relational
+identity/provenance evidence. Historical additions to append-only evidence are allowed while
+requiring the older snapshot's original evidence to remain present. Both ends of historical
+settlement/allocation edges are selected from the same snapshot.
+
+An integration issue discovered during testing was PostgreSQL JSONB object-key ordering:
+values are preserved, but legacy stage fingerprints can depend on the original key order.
+Factored the existing SQL projection body into `db_import._projection_plan` and added
+`validate_contracts` in `db_import_validation.py`. The reader validates the stored canonical
+hashes and projects already-imported values without rerunning order-sensitive financial
+derivations. Import `prepare` retains all its original deterministic replay and integrity
+checks before projection. No existing hashes, source files, financial rules or stored rows
+were altered; no guessed key ordering or weakened import validation was introduced.
+
+Verification:
+
+- **301 tests passed, no skips**: all 276 prior tests plus 18 database-read and seven CLI
+  regressions. Tests include exact source/registry parity, a PostgreSQL-rejected attempted
+  UPDATE during a read, historical null-to-CLOSED transitions, historical allocation evidence
+  revisions under unchanged settlements, partial repayment overlays, inclusive filters,
+  malformed inputs, source/typed/link corruption, missing provenance and clean failure behavior.
+- Real views return **154 unique bank transactions, 85 matched meanings, 27 relationships,
+  eight obligations and eight settlement views**. Bank filtering returns 103 Kotak / 51 SBI.
+  All classifications and settlement overlays agree exactly with existing JSON. Repeated
+  queries are identical, and the actual CLI SBI transaction query succeeds.
+- Settlements remain **3 CLOSED / 5 UNASSESSED**. All five unassessed outstanding amounts
+  remain null. Dad's SBI_0025 advance -> SBI_0026 repayment retains high evidence strength,
+  inferred confirmation and CLOSED status. Existing financial questions are unchanged.
+- All rows in **30 application tables** remain identical to the pre-query baseline,
+  including import timestamps. All **20 protected files** are unchanged; all **12 financial
+  JSON files** remain byte-identical to the retained original baseline. No test databases remain.
+  Private baselines/results are under ignored `tmp/phase3d3/`.
+
+README documents the commands and origin-date/account filtering for obligation/settlement
+views. This checkpoint adds read access only: no dashboard, assistant, API service, financial
+rule change, automatic synchronization or subsequent slice implementation.
+
 ## Phase 3D.2 complete: PostgreSQL data import
 
 Completed and verified on **2026-10-30**. Added `src/db_import.py`,
