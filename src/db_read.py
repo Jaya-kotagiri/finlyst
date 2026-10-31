@@ -9,16 +9,20 @@ from copy import deepcopy
 from datetime import date
 import re
 from uuid import UUID
+from typing import get_args
 
 import psycopg
 from psycopg import sql
 from psycopg.pq import TransactionStatus
 
 from . import db, db_import, identities
+from .financial_summary import transaction_summary, obligation_summary
+from .output_models import SpecialTreatment
 
 
-VIEWS = ('transactions', 'obligations', 'relationships', 'settlements')
+VIEWS = ('transactions', 'obligations', 'relationships', 'settlements', 'accounts', 'categories')
 STATUSES = ('OPEN', 'PARTIAL', 'CLOSED', 'UNASSESSED')
+TREATMENTS = (*get_args(SpecialTreatment), 'unknown', 'expense')
 
 
 def _uuid(value, label):
@@ -149,7 +153,7 @@ def read_snapshot(connection, snapshot_id):
     return dict(snapshot_id=str(identifier), snapshot=snapshot, registry=registry, sources=sources)
 
 
-def _filters(view, bank, date_from, date_to, status, record_id):
+def _filters(view, bank, date_from, date_to, status, record_id, account_id=None, category=None, treatment=None, uncategorized=False):
     if view not in VIEWS:
         raise ValueError('Unknown database view; choose ' + ', '.join(VIEWS))
     if bank is not None and bank not in ('kotak', 'sbi'):
@@ -168,18 +172,37 @@ def _filters(view, bank, date_from, date_to, status, record_id):
         raise ValueError('status applies only to obligations/settlements and must be ' + ', '.join(STATUSES))
     if record_id is not None:
         _uuid(record_id, 'record_id')
+    if account_id is not None:
+        _uuid(account_id, 'account_id')
+    if category is not None and (not isinstance(category, str) or not category.strip()):
+        raise ValueError('category must be nonempty text')
+    if category is not None and uncategorized:
+        raise ValueError('category and uncategorized are mutually exclusive')
+    if treatment is not None and treatment not in TREATMENTS:
+        raise ValueError('Unknown financial treatment')
+    if view == 'categories' and record_id is not None:
+        raise ValueError('Categories have source labels, not durable record IDs; filter by category')
 
 
-def read_view(connection, snapshot_id, view, *, bank=None, date_from=None, date_to=None, status=None, record_id=None):
+def read_view(connection, snapshot_id, view, *, bank=None, date_from=None, date_to=None, status=None, record_id=None,
+              account_id=None, category=None, treatment=None, uncategorized=False):
     """Return unchanged financial meanings with durable identities and provenance.
 
     The settlement effect remains separate from base classification: an allocation
     applies only to its verified amount, not automatically to the whole bank movement.
     """
-    _filters(view, bank, date_from, date_to, status, record_id)
+    _filters(view, bank, date_from, date_to, status, record_id, account_id, category, treatment, uncategorized)
     bundle = read_snapshot(connection, snapshot_id)
+    return _view(bundle, view, bank=bank, date_from=date_from, date_to=date_to, status=status, record_id=record_id,
+                 account_id=account_id, category=category, treatment=treatment, uncategorized=uncategorized)
+
+
+def _view(bundle, view, *, bank=None, date_from=None, date_to=None, status=None, record_id=None,
+          account_id=None, category=None, treatment=None, uncategorized=False):
+    """Shape one already-verified snapshot; no database access or new interpretations."""
     snapshot, registry, sources = (bundle[key] for key in ('snapshot', 'registry', 'sources'))
     selected_record = str(_uuid(record_id, 'record_id')) if record_id is not None else None
+    selected_account = str(_uuid(account_id, 'account_id')) if account_id is not None else None
     provenance = {}
     for role, kind, legacy, payload in db_import.observations(snapshot):
         mapping_id = identities.observation_id(sources[role], kind, legacy)
@@ -197,10 +220,21 @@ def read_view(connection, snapshot_id, view, *, bank=None, date_from=None, date_
     def wrapper(role, kind, legacy, payload):
         return dict(identity(role, kind, legacy), data=payload)
 
-    def matches_bank_date(transaction):
+    def account_identity(transaction):
+        if transaction['account'] is None:
+            return None
+        return identity('bank:' + transaction['bank'].lower(), 'account', transaction['bank'] + ':' + transaction['account'])
+
+    def matches_bank_date(transaction, include_date=True):
         day = transaction['transaction_date']
+        classification = classifications[transaction['transaction_id']]
+        label = (classification['semantic'] or {}).get('category')
+        account = account_identity(transaction)
         return ((bank is None or transaction['bank'].lower() == bank)
-                and (date_from is None or day >= date_from) and (date_to is None or day <= date_to))
+                and (selected_account is None or account is not None and account['record_id'] == selected_account)
+                and (not include_date or (date_from is None or day >= date_from) and (date_to is None or day <= date_to))
+                and (category is None or label == category) and (not uncategorized or label is None)
+                and (treatment is None or classification['effective']['treatment'] == treatment))
 
     transactions = {row['transaction_id']: row for rows in snapshot['banks'].values() for row in rows}
     classifications = {row['transaction_id']: row for row in snapshot['classification']['transactions']}
@@ -213,7 +247,31 @@ def read_view(connection, snapshot_id, view, *, bank=None, date_from=None, date_
     allocations = {row['allocation_id']: wrapper('settlements', 'allocation', row['allocation_id'], row)
                    for row in snapshot['settlements']['allocations']}
     records = []
-    if view == 'transactions':
+    if view == 'accounts':
+        accounts = {}
+        for transaction in transactions.values():
+            account = account_identity(transaction)
+            if account is not None and matches_bank_date(transaction):
+                item = accounts.setdefault(account['record_id'], dict(account, data={'bank': transaction['bank'], 'account': transaction['account']}, transaction_count=0))
+                item['transaction_count'] += 1
+        for item in accounts.values():
+            # Category/treatment/date-from filters never manufacture an account balance.
+            history = [row for row in transactions.values() if row['bank'] == item['data']['bank']
+                       and row['account'] == item['data']['account'] and (date_to is None or row['transaction_date'] <= date_to)]
+            last = max(enumerate(history), key=lambda pair: (pair[1]['transaction_date'], pair[0]))[1]
+            records.append(dict(item, balance_after=last['balance_after'], balance_date=last['transaction_date'],
+                                balance_transaction_id=last['transaction_id']))
+    elif view == 'categories':
+        groups = {}
+        for row in transactions.values():
+            if matches_bank_date(row):
+                classified = classifications[row['transaction_id']]
+                label = (classified['semantic'] or {}).get('category')
+                groups.setdefault(label, []).append(classified)
+        records = [dict(category=label, summary=transaction_summary(groups[label], effects))
+                   for label in sorted(groups, key=lambda value: (value is not None, value or ''))]
+        return dict(schema_version='3D.3.1', snapshot_id=bundle['snapshot_id'], view=view, count=len(records), records=records)
+    elif view == 'transactions':
         for transaction in sorted(transactions.values(), key=lambda row: (row['transaction_date'], row['bank'], row['transaction_id'])):
             if not matches_bank_date(transaction):
                 continue
@@ -226,7 +284,7 @@ def read_view(connection, snapshot_id, view, *, bank=None, date_from=None, date_
     elif view == 'relationships':
         for row in relationships:
             # An unresolved candidate is not an executed relationship participant.
-            if any(value is not None for value in (bank, date_from, date_to)) and not any(
+            if (any(value is not None for value in (bank, date_from, date_to, account_id, category, treatment)) or uncategorized) and not any(
                     matches_bank_date(transactions[key]) for key in row['transaction_ids']):
                 continue
             records.append(wrapper('relationships', 'relationship', row['relationship_id'], row))
@@ -236,7 +294,7 @@ def read_view(connection, snapshot_id, view, *, bank=None, date_from=None, date_
             settlement = settlements[legacy]
             if status is not None and settlement['status'] != status:
                 continue
-            if bank is not None and not any(transactions[key]['bank'].lower() == bank for key in origin['originating_transaction_ids']):
+            if not any(matches_bank_date(transactions[key], include_date=False) for key in origin['originating_transaction_ids']):
                 continue
             if ((date_from is not None and origin['origin_date'] < date_from)
                     or (date_to is not None and origin['origin_date'] > date_to)):
@@ -252,14 +310,58 @@ def read_view(connection, snapshot_id, view, *, bank=None, date_from=None, date_
                          count=len(records), records=records))
 
 
-def run(root=db.ROOT, *, view='snapshots', snapshot_id=None, bank=None, date_from=None, date_to=None, status=None, record_id=None):
+def read_summary(connection, snapshot_id, *, bank=None, date_from=None, date_to=None, account_id=None,
+                 category=None, treatment=None, uncategorized=False):
+    _filters('transactions', bank, date_from, date_to, None, None, account_id, category, treatment, uncategorized)
+    bundle = read_snapshot(connection, snapshot_id)
+    filters = dict(bank=bank, date_from=date_from, date_to=date_to, account_id=account_id,
+                   category=category, treatment=treatment, uncategorized=uncategorized)
+    transactions = _view(bundle, 'transactions', **filters)['records']
+    obligations = _view(bundle, 'obligations', **filters)['records']
+    return dict(schema_version='3D.3.1', snapshot_id=bundle['snapshot_id'], filters=filters,
+        financial=transaction_summary([row['classification'] for row in transactions],
+            {row['legacy_id']: row['settlement_effect'] for row in transactions if row['settlement_effect']}),
+        obligations=obligation_summary([row['settlement'] for row in obligations]))
+
+
+def verify_snapshot(connection, snapshot_id, *, json_root=None):
+    bundle = read_snapshot(connection, snapshot_id)
+    snapshot = bundle['snapshot']
+    if json_root is not None:
+        original, registry, _, unchanged = db_import.load_project(json_root)
+        if original != snapshot or registry != bundle['registry']:
+            raise ValueError('Selected database snapshot differs from the current validated JSON/identity registry')
+        unchanged()
+    return dict(snapshot_id=bundle['snapshot_id'], result='PASS', json_parity='PASS' if json_root is not None else 'NOT_REQUESTED',
+        source_documents=len(bundle['sources']), bank_transactions=sum(map(len, snapshot['banks'].values())),
+        semantic_events=sum(len(doc['events']) for doc in snapshot['events'].values()),
+        relationships=len(snapshot['relationships']['relationships']), obligations=len(snapshot['origins']['obligations']),
+        settlements=len(snapshot['settlements']['obligation_settlement_view']), allocations=len(snapshot['settlements']['allocations']),
+        identity_mappings=len(bundle['registry']['legacy_mappings']))
+
+
+def run(root=db.ROOT, *, view='snapshots', snapshot_id=None, bank=None, date_from=None, date_to=None, status=None, record_id=None,
+        account_id=None, category=None, treatment=None, uncategorized=False, against_json=False):
     if view != 'snapshots':
         _uuid(snapshot_id, 'snapshot_id')
-        _filters(view, bank, date_from, date_to, status, record_id)
-    elif any(value is not None for value in (snapshot_id, bank, date_from, date_to, status, record_id)):
+        _filters('transactions' if view in ('summary', 'verify') else view, bank, date_from, date_to, status, record_id,
+                 account_id, category, treatment, uncategorized)
+    elif any(value is not None for value in (snapshot_id, bank, date_from, date_to, status, record_id, account_id, category, treatment)) or uncategorized:
         raise ValueError('Snapshot listing does not accept financial record filters')
+    if against_json and view != 'verify':
+        raise ValueError('against_json applies only to database verification')
+    if view == 'verify' and (any(value is not None for value in (bank, date_from, date_to, status, record_id, account_id, category, treatment)) or uncategorized):
+        raise ValueError('Database verification checks the whole snapshot and does not accept record filters')
+    if view == 'summary' and record_id is not None:
+        raise ValueError('Summary filters use account/date/category/treatment, not record_id')
     with db.connect(root) as connection:
         if view == 'snapshots':
             return list_snapshots(connection)
+        if view == 'verify':
+            return verify_snapshot(connection, snapshot_id, json_root=root if against_json else None)
+        if view == 'summary':
+            return read_summary(connection, snapshot_id, bank=bank, date_from=date_from, date_to=date_to,
+                                account_id=account_id, category=category, treatment=treatment, uncategorized=uncategorized)
         return read_view(connection, snapshot_id, view, bank=bank, date_from=date_from, date_to=date_to,
-                         status=status, record_id=record_id)
+                         status=status, record_id=record_id, account_id=account_id, category=category,
+                         treatment=treatment, uncategorized=uncategorized)

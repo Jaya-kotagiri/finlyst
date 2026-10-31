@@ -371,11 +371,61 @@ all active relational data with a pure projection of those exact values. The imp
 still performs its original financial replay and integrity checks. No hashes, original JSON,
 financial rules or database rows were rewritten to accommodate the reader.
 
-Verification: **301 tests passed with no skips** (276 previous plus 25 read/CLI regressions).
+Initial read-layer verification: **301 tests passed with no skips** (276 previous plus 25 read/CLI regressions).
 Real queries preserved all 154 transactions, 85 meanings, 27 relationships, eight obligations
 and eight settlement views. All 30 database-table contents, 20 protected files and 12 baseline
 financial JSON byte comparisons remained unchanged. The private verification report is
 `tmp/phase3d3/verification.json`. No dashboard, API service or automatic synchronization is added.
+
+### Account/category filters, summaries and database verification
+
+The complete 3D.3 integration adds these read-only commands:
+
+```powershell
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --view accounts
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --view categories
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --account ACCOUNT_UUID --category Food
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --uncategorized
+python -m src.cli db-read --snapshot SNAPSHOT_UUID --treatment unknown
+python -m src.cli db-summary --snapshot SNAPSHOT_UUID
+python -m src.cli db-summary --snapshot SNAPSHOT_UUID --bank kotak --date-from 2026-08-01 --date-to 2026-08-31
+python -m src.cli db-verify --snapshot SNAPSHOT_UUID --against-json
+```
+
+Use the durable account UUID from the accounts view. Category matching is exact and preserves
+original spelling; `--uncategorized` selects null labels. Unknown financial treatment remains
+the existing `unknown` value and is independent of category. Treatment filters select the
+original effective treatment; repayment overlays remain separate. Account/date/category/
+treatment filters combine. Relationship filters apply to participants, obligation/settlement
+filters to origins. Account balances show the last recorded balance at/before `--date-to`,
+independent of category/treatment selection, with the observation date. Missing balances
+remain null. Category groups include null and summarize existing selected transactions only.
+
+`db-summary` reports gross bank debits/credits separately from recognized income/expense,
+excluded non-income/expense movements and uncertain amounts. Each bank movement is counted
+once. Verified repayment allocations are excluded only for their supported amount, and are
+reported as already included in exclusions. Transfers, reimbursements, cash conversions and
+advances never become ordinary income/spending. Shared amounts and unknowns stay uncertain;
+`income_expense_complete: false` marks incomplete totals. Aggregation uses Decimal in
+`src/financial_summary.py`, separately from database access and existing financial rules.
+
+Obligation summaries distinguish `confirmed_outstanding_subtotal` from `total_outstanding`.
+The latter is null whenever any selected obligation is UNASSESSED, even if the known subtotal
+is zero. Counts identify empty selections; summaries describe recorded selected claims, not
+all possible debt or cash holdings. Currency remains the existing owned-INR-statement scope.
+
+`db-verify` checks stored document fingerprints, schemas, amounts, relational links, durable
+IDs, revisions and provenance without writing. `--against-json` additionally compares the
+whole snapshot and registry with validated local JSON; use it with the corresponding current
+snapshot. Historical reads remain available without that flag. All database query inputs are
+parameterized; filters are applied to the verified snapshot without interpolating SQL.
+
+Completed verification: **314 tests passed, no skips**. Real results preserve 154 transactions,
+85 meanings, 27 relationships, eight obligations and all original evidence. Two account views
+and 25 category groups reconcile to the source data. Recognized income/expense are INR
+24,090.00 / 26,903.63, with uncertain amounts reported separately; total receivables remains
+null. All 30 database tables and 20 protected files are unchanged. Private verification evidence
+is under `tmp/phase3d3_integration/`. Stop after 3D.3; no frontend, assistant or new API calls.
 
 Planned direction:
 

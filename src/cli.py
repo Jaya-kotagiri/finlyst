@@ -38,22 +38,34 @@ def parser():
                     'validate': 'validate saved outputs without writing',
                     'import-db': 'explicitly import validated JSON into PostgreSQL',
                     'db-snapshots': 'list imported PostgreSQL snapshots without writing',
-                    'db-read': 'read financial data from one explicit PostgreSQL snapshot'}
-    for name in ('run', *STAGES, 'validate', 'import-db', 'db-snapshots', 'db-read'):
+                    'db-read': 'read financial data from one explicit PostgreSQL snapshot',
+                    'db-summary': 'summarize existing financial treatments without double-counting',
+                    'db-verify': 'verify database values, identities and optional local JSON parity'}
+    for name in ('run', *STAGES, 'validate', 'import-db', 'db-snapshots', 'db-read', 'db-summary', 'db-verify'):
         command = commands.add_parser(name, help=descriptions.get(name, f'run the {name} stage'))
         command.add_argument('--root', type=Path, default=argparse.SUPPRESS, help='project directory')
         if name in ('import-db', 'db-snapshots'):
             continue
-        if name == 'db-read':
+        if name in ('db-read', 'db-summary', 'db-verify'):
             command.add_argument('--snapshot', required=True, type=uuid_argument, help='imported snapshot UUID')
-            command.add_argument('--view', choices=('transactions', 'obligations', 'relationships', 'settlements'),
-                                 default='transactions')
+            if name == 'db-verify':
+                command.add_argument('--against-json', action='store_true', help='also compare current validated local JSON and registry')
+                continue
+            if name == 'db-read':
+                command.add_argument('--view', choices=('transactions', 'obligations', 'relationships', 'settlements', 'accounts', 'categories'),
+                                     default='transactions')
             command.add_argument('--bank', choices=BANKS, help='filter by bank')
+            command.add_argument('--account', dest='account_id', type=uuid_argument, help='durable account UUID from the accounts view')
+            categories = command.add_mutually_exclusive_group()
+            categories.add_argument('--category', help='exact existing category label')
+            categories.add_argument('--uncategorized', action='store_true', help='select null category labels')
+            command.add_argument('--treatment', type=str.lower, help='existing effective treatment, e.g. expense or unknown')
             command.add_argument('--date-from', type=date_argument, help='inclusive lower date, YYYY-MM-DD')
             command.add_argument('--date-to', type=date_argument, help='inclusive upper date, YYYY-MM-DD')
-            command.add_argument('--status', choices=('OPEN', 'PARTIAL', 'CLOSED', 'UNASSESSED'),
-                                 help='settlement status; obligations or settlements view only')
-            command.add_argument('--record-id', type=uuid_argument, help='filter by durable record UUID')
+            if name == 'db-read':
+                command.add_argument('--status', choices=('OPEN', 'PARTIAL', 'CLOSED', 'UNASSESSED'),
+                                     help='settlement status; obligations or settlements view only')
+                command.add_argument('--record-id', type=uuid_argument, help='filter by durable record UUID')
             continue
         if name == 'validate':
             command.add_argument('--all', required=True, action='store_true', help='check all stages and identity mappings')
@@ -190,6 +202,7 @@ def main(argv=None):
     if args.command == 'db-read':
         if args.status and args.view not in ('obligations', 'settlements'):
             cli.error('--status is supported only for obligations and settlements views')
+    if args.command in ('db-read', 'db-summary'):
         if args.date_from and args.date_to and args.date_from > args.date_to:
             cli.error('--date-from must not come after --date-to')
     if args.command == 'run':
@@ -212,14 +225,21 @@ def main(argv=None):
                 from .db_import import run
                 result = run(root)
                 print(json.dumps(result, indent=2))
-            elif stage in ('db-snapshots', 'db-read'):
+            elif stage in ('db-snapshots', 'db-read', 'db-summary', 'db-verify'):
                 from .db_read import run
                 if stage == 'db-snapshots':
                     result = run(root, view='snapshots')
+                elif stage == 'db-verify':
+                    result = run(root, view='verify', snapshot_id=args.snapshot, against_json=args.against_json)
                 else:
-                    result = run(root, view=args.view, snapshot_id=args.snapshot, bank=args.bank,
+                    extra = {key: getattr(args, key) for key in ('account_id', 'category', 'treatment', 'uncategorized') if getattr(args, key)}
+                    if stage == 'db-summary':
+                        result = run(root, view='summary', snapshot_id=args.snapshot, bank=args.bank,
+                                     date_from=args.date_from, date_to=args.date_to, **extra)
+                    else:
+                        result = run(root, view=args.view, snapshot_id=args.snapshot, bank=args.bank,
                                  date_from=args.date_from, date_to=args.date_to, status=args.status,
-                                 record_id=args.record_id)
+                                 record_id=args.record_id, **extra)
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
                 selected = getattr(args, 'bank', 'all')

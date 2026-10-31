@@ -298,6 +298,65 @@ class DatabaseReadTests(unittest.TestCase):
             db_read.read_snapshot(self.connection, identifier)
         self.assertEqual(before, self.rows())
 
+    def test_empty_database_and_missing_records_are_explicit(self):
+        from src import db_read
+        self.assertEqual(db_read.list_snapshots(self.connection), [])
+        with self.assertRaisesRegex(ValueError, 'not found'):
+            db_read.read_snapshot(self.connection, str(UUID(int=0)))
+        identifier, _, _ = self.import_snapshot()
+        self.assertEqual(self.view(identifier,'transactions',record_id=str(UUID(int=0)))['count'],0)
+        self.assertEqual(db_read.read_summary(self.connection,identifier,date_from='2030-01-01')['financial']['transaction_count'],0)
+
+    def test_accounts_categories_and_exact_filters(self):
+        specs={'KOTAK':[dict(amount='10.00',note='Printouts',event_type='purchase'),dict(amount='20.00')],
+               'SBI':[dict(amount='30.00',note='Lunch',event_type='purchase')]}
+        data, registry=resolved_snapshot(specs, {'KOTAK':[dict(category='Office')],'SBI':[dict(category='Food')]})
+        identifier, _, _=self.import_snapshot(data,registry)
+        accounts=self.view(identifier,'accounts')['records']
+        self.assertEqual(len(accounts),2)
+        kotak=next(row for row in accounts if row['data']['bank']=='KOTAK')
+        self.assertEqual(kotak['balance_after'],'9970.00')
+        selected=self.view(identifier,'transactions',account_id=kotak['record_id'],category='Office',treatment='expense')
+        self.assertEqual([row['legacy_id'] for row in selected['records']],['KOTAK_0001'])
+        self.assertEqual(self.view(identifier,'accounts',category='Office')['records'][0]['balance_after'],'9970.00')
+        self.assertEqual(self.view(identifier,'transactions',uncategorized=True)['count'],1)
+        self.assertEqual(self.view(identifier,'transactions',category="Food' OR 1=1 --")['count'],0)
+        categories=self.view(identifier,'categories')['records']
+        self.assertEqual({row['category'] for row in categories},{None,'Office','Food'})
+        self.assertEqual(sum(row['summary']['transaction_count'] for row in categories),3)
+
+    def test_null_bank_balance_is_not_presented_as_zero(self):
+        data=snapshot({'KOTAK':[dict(reference='123456789012')],'SBI':[dict(reference='223456789012')]},unknown_balances=True)
+        identifier, _, _=self.import_snapshot(data,identities.migrate(data))
+        self.assertTrue(all(row['balance_after'] is None for row in self.view(identifier,'accounts')['records']))
+
+    def test_summary_and_verification_are_repeatable_and_read_only(self):
+        from src import db_read
+        identifier, _, _=self.import_snapshot()
+        before=self.rows()
+        result=db_read.read_summary(self.connection,identifier)
+        self.assertEqual(result['financial']['verified_principal_repayments_included_in_excluded'],'100.00')
+        self.assertEqual(result['financial']['recognized_income'],'0.00')
+        self.assertEqual(result,db_read.read_summary(self.connection,identifier))
+        report=db_read.verify_snapshot(self.connection,identifier)
+        self.assertEqual((report['result'],report['bank_transactions']),('PASS',4))
+        self.assertEqual(before,self.rows())
+
+    def test_verify_json_mismatch_rejected_without_writing(self):
+        from src import db_read
+        identifier,data,registry=self.import_snapshot()
+        with patch('src.db_import.load_project',return_value=(data,registry,{},lambda:None)):
+            self.assertEqual(db_read.verify_snapshot(self.connection,identifier,json_root='unused')['json_parity'],'PASS')
+        with patch('src.db_import.load_project',return_value=({},registry,{},lambda:None)),self.assertRaises(ValueError):
+            db_read.verify_snapshot(self.connection,identifier,json_root='unused')
+
+    def test_new_filter_errors_fail_before_connecting(self):
+        from src import db_read
+        for fields in [dict(account_id='invalid'),dict(treatment='invented'),dict(category=''),dict(category='Food',uncategorized=True)]:
+            with self.subTest(fields=fields),patch('src.db.connect') as connect,self.assertRaises(ValueError):
+                db_read.run(snapshot_id=str(UUID(int=0)),view='transactions',**fields)
+            connect.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

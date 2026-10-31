@@ -9,7 +9,7 @@ from src.settlements import build as settle
 from tests.support import doc, origin, prepared, receipt, with_semantics
 
 
-def snapshot(specs=None, semantics=None, opening_balances=None):
+def snapshot(specs=None, semantics=None, opening_balances=None, unknown_balances=False):
     specs = specs or {
         'KOTAK': [origin(), receipt(), dict(amount='25.00', date='2026-08-03')],
         'SBI': [dict(amount='20.00', date='2026-08-03')],
@@ -21,11 +21,12 @@ def snapshot(specs=None, semantics=None, opening_balances=None):
             document = with_semantics(document, semantics[bank])
         transactions = []
         balance = Decimal((opening_balances or {}).get(bank, '10000.00'))
-        for row in document['transactions']:
+        for row, spec in zip(document['transactions'], rows):
             transaction = deepcopy(row['bank_transaction'])
             balance += Decimal(transaction['amount']) * (1 if transaction['direction'] == 'credit' else -1)
             transaction.update(account='1234567890' if bank == 'KOTAK' else '9876543210',
-                               balance_after=format(balance, '.2f'))
+                               reference=spec.get('reference', transaction['reference']),
+                               balance_after=None if unknown_balances else format(balance, '.2f'))
             transactions.append(transaction)
         documents.append(reconcile(transactions, document['event_source_document']))
     data = prepared(documents)

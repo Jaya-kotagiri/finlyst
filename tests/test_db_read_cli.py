@@ -103,3 +103,19 @@ class DatabaseReadCliTests(unittest.TestCase):
         connect.assert_not_called()
         self.assertEqual([call.args[0] for call in stages.call_args_list], list(cli.STAGES))
         validate.assert_called_once_with(self.root.resolve())
+
+    def test_new_summary_and_verification_commands_forward_arguments(self):
+        with patch('src.db_read.run',return_value={}) as run:
+            self.assertEqual(self.invoke(['db-summary','--snapshot',SNAPSHOT,'--account',RECORD,'--category','Food','--treatment','EXPENSE'])[0],0)
+        run.assert_called_once_with(self.root.resolve(),view='summary',snapshot_id=SNAPSHOT,bank=None,date_from=None,date_to=None,
+                                   account_id=RECORD,category='Food',treatment='expense')
+        with patch('src.db_read.run',return_value={}) as run:
+            self.assertEqual(self.invoke(['db-verify','--snapshot',SNAPSHOT,'--against-json'])[0],0)
+        run.assert_called_once_with(self.root.resolve(),view='verify',snapshot_id=SNAPSHOT,against_json=True)
+
+    def test_new_help_commands_do_not_access_database(self):
+        with patch('src.db.connect') as connect,redirect_stdout(io.StringIO()):
+            for command in ('db-summary','db-verify'):
+                with self.assertRaises(SystemExit) as result: cli.main([command,'--help'])
+                self.assertEqual(result.exception.code,0)
+        connect.assert_not_called()

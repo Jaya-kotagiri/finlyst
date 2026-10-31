@@ -1,6 +1,58 @@
 # Project state
 
-## Phase 3D.3 complete: read-only PostgreSQL query layer
+## Phase 3D.3 complete: requested queries and integration
+
+Completed the explicitly requested 3D.3 scope on **2026-10-31**, extending the earlier
+read-only query checkpoint below. Added account/category views, durable-account/category/
+financial-treatment filters, exact financial summaries and `db-verify --against-json`.
+Existing transaction, relationship, obligation, settlement, history and provenance queries
+are reused. No migration, dependency, financial-rule change, AI call or output rewrite.
+
+Added `src/financial_summary.py` to keep aggregation separate from database access.
+Summaries count each bank movement once, using existing income/expense flags and the
+verified settlement overlay only for its allocated amount. Transfers, cash conversions,
+advances and reimbursements are excluded from recognized income/spending; deferred shares,
+unknown movements and unexplained overpayments remain separately uncertain. Categories
+remain original source labels; null category is distinct from unknown financial treatment.
+
+Confirmed outstanding subtotals and total outstanding are separate: any UNASSESSED amount
+makes that direction's total outstanding null. Accounts expose the last recorded bank
+balance and its date/reference transaction; a missing balance remains null. Filtering by
+category does not turn a matching purchase's historical balance into the closing balance.
+
+CLI additions: `db-read --view accounts|categories`, `--account UUID`, `--category LABEL`,
+`--uncategorized`, `--treatment VALUE`, `db-summary --snapshot UUID` and
+`db-verify --snapshot UUID [--against-json]`. All are read-only. Snapshot selection remains
+explicit. Existing bank/date filters combine with the new filters; summaries are scoped
+to the selection. Optional JSON verification compares all stored documents and the registry
+with the current validated local files and rejects a different historical snapshot.
+
+Verification:
+
+- **314 tests passed, no skips**: all 301 earlier tests plus 13 new regressions. New coverage
+  includes account/category/treatment filtering, exact Decimal aggregation, exclusion of
+  transfers/reimbursements/cash, partial repayments, unknown outstanding/bank balances,
+  empty databases, missing records, repeated execution, JSON mismatch and CLI dispatch.
+  Existing historical-revision, provenance, inconsistent-link and database read-only checks pass.
+- Real SQL/JSON parity: **154 transactions, 85 meanings, 27 relationships, 8 obligations,
+  8 settlement views, 5 allocations and 844 identity mappings**. Account view returns 2;
+  category view returns 25 groups including null. Filters preserve 68 base unknown treatments
+  and 62 expenses without relabeling the original classifications.
+- Recognized income **INR 24,090.00**, recognized expense **INR 26,903.63**. These are incomplete
+  income/spending totals: 72 transactions retain uncertain amounts (67 base unknown movements
+  after the fully verified Dad return overlay, plus five shared/recoverable expenses).
+  The INR 3,345.00 verified repayment amount is included in excluded movements, never added
+  as another cashflow. Gross bank debits/credits remain INR 129,941.98 / INR 157,777.79.
+- Receivables retain 3 CLOSED / 5 UNASSESSED; confirmed outstanding subtotal is INR 0.00,
+  while total outstanding is **null**. Three original principals remain unknown. This does
+  not assert that the user has no debt or that missing financial history is complete.
+- All **30 application-table contents**, **20 protected files** and **12 original financial
+  JSON byte comparisons** are unchanged. Repeated results agree exactly. Private evidence:
+  `tmp/phase3d3_integration/verification.json` and retained baselines. No test databases remain.
+
+Stop after 3D.3 verification. No frontend, assistant, API integration or subsequent phase.
+
+## Earlier Phase 3D.3 checkpoint: initial read-only query layer
 
 Completed on **2026-10-31** following the instruction to continue building. No separate
 3D.3 specification existed in the repository, so the next bounded slice implements the
