@@ -8,6 +8,90 @@ overlap/continuity rules, Python integration and PostgreSQL migration design. Ke
 private `output/identities/identity_registry.json` across imports and back it up with
 the source artifacts; Git deliberately excludes it.
 
+## Read-only backend API (Phase 4A)
+
+With the project virtual environment active and local PostgreSQL running:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m src.api
+```
+
+Open **http://127.0.0.1:8000/docs** for interactive API documentation. ReDoc is at
+`/redoc`, and the typed OpenAPI contract is at `/openapi.json`. Starting the server
+does not migrate, import, regenerate or change financial data. `/health` is process
+liveness only; it does not assert that PostgreSQL is available.
+
+First call `GET /api/v1/snapshots`, then supply a returned `snapshot_id` explicitly
+on financial requests. Historical snapshots remain selectable; there is no implicit
+latest-snapshot selection. Transaction and account selectors use durable UUIDs.
+
+| GET endpoint | Result |
+| --- | --- |
+| `/api/v1/snapshots` | Available imported snapshots and record counts |
+| `/api/v1/accounts` | Accounts, last recorded balances, dates and source transaction IDs |
+| `/api/v1/transactions` | Filtered transactions with meanings, classification, settlement overlay and provenance |
+| `/api/v1/transactions/{record_id}` | One transaction and its supporting evidence/relationships |
+| `/api/v1/summaries` | Existing exact income/expense, bank movement, excluded movement and uncertainty summaries |
+| `/api/v1/categories` | Original category labels and financial breakdowns, including null category |
+| `/api/v1/relationships` | Financial links, original purpose and evidence |
+| `/api/v1/obligations` | Origins, settlement status, allocations and provenance |
+| `/api/v1/settlements` | Existing settlement views and evidence |
+
+List and summary endpoints accept `bank=kotak|sbi`, `account_id`, inclusive `date_from`
+and `date_to` (YYYY-MM-DD), exact `category`, `uncategorized=true`, and `treatment`.
+Category and uncategorized filters cannot be combined. Obligation/settlement endpoints
+also accept `status` (for example, `UNASSESSED` or `CLOSED`). Their financial filters
+refer to originating transactions. Transaction detail accepts only `snapshot_id`.
+All filter semantics come from the existing PostgreSQL query layer.
+
+Transaction lists accept `offset` (default 0) and `limit` (default 50, maximum 100).
+Ordering is stable by date, bank and legacy transaction ID within a selected snapshot.
+The `pagination` object supplies `total`, `offset`, `limit`, `returned` and nullable
+`next_offset`. An offset past the end returns an empty list. For example, in the docs:
+
+```text
+GET /api/v1/transactions?snapshot_id=<UUID>&bank=kotak&offset=0&limit=25
+GET /api/v1/summaries?snapshot_id=<UUID>&treatment=self_transfer
+GET /api/v1/obligations?snapshot_id=<UUID>&status=UNASSESSED
+```
+
+Success JSON contains `api_version: "4A.1"`, `snapshot_id` and `data`. Money remains
+exact two-decimal strings; missing amounts remain null. UNKNOWN treatment, UNASSESSED
+outstanding and inferred confirmation remain distinct from zero or explicit confirmation.
+Summaries reuse existing calculations: transfers, reimbursements and cash conversions
+do not become recognized income/expense. Filter by `treatment=self_transfer` to inspect
+transfer movements separately; the two account legs are not additional income/spending.
+Original event values, evidence, revision IDs and source IDs remain available.
+
+Errors have `api_version` and an `error` object with `code`, `message` and `fields`.
+Invalid parameters return 422; missing snapshots/transactions return 404; stored-data
+integrity failures return 409; unavailable databases return 503. Invalid server responses
+return a redacted 500, never partial financial data. Error bodies omit credentials,
+SQL rows and exception details.
+
+Database configuration reuses `FINLYST_DB_*` and private `.env.db` as documented below.
+Optional process environment variables: `FINLYST_PROJECT_ROOT` selects the project/config
+directory, `FINLYST_API_PORT` changes port 8000, and `FINLYST_API_HOST` accepts only
+`127.0.0.1`, `::1` or `localhost`. Credentials and environment files must stay out of Git.
+
+This is a trusted-local-machine development API with no authentication. It binds to
+loopback, checks the peer and Host, rejects forwarded headers and cross-origin browser
+requests, enables no CORS, disables proxy-header trust and access logging, and marks
+responses `no-store`. Do not expose it through a public proxy/tunnel; public deployment
+requires a separate authenticated design. Other local processes can access it. No write
+endpoints exist. These restrictions intentionally do not add frontend integration yet.
+
+Modules are `src/api.py` (routes/startup), `src/api_models.py` (HTTP contracts reusing
+financial schemas) and `src/api_access.py` (local access checks). All database reads use
+`src/db_read.py` and its read-only transactions. Pagination currently slices the fully
+validated snapshot view in memory; it limits response size, not database-read cost.
+There is no snapshot cache or new financial calculation layer.
+
+Run endpoint unit tests with `python -m unittest tests.test_api -v`. Run the complete
+suite, including isolated PostgreSQL/API integration tests, with
+`python -m tests.run_database_tests` using the local setup below. No external AI API is called.
+
 ## Unified pipeline CLI
 
 From the project root, with the project virtual environment active:
@@ -89,7 +173,7 @@ python -m unittest tests.test_classification -v
 Both discovery commands run the full suite; the last command runs one module independently.
 Tests generate synthetic CSV/XLSX/JSON files in temporary directories under `tests/`
 and clean them up afterward. No existing `tests/fixtures/`, private `input/` or
-`output/`, `.env`, or API key is required. API interactions are mocked. Shared
+`output/`, `.env`, or API key is required. External AI API interactions are mocked. Shared
 builders live in `tests/support.py`; test modules do not import each other.
 
 ## Strict financial output contracts

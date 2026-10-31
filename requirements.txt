@@ -5,3 +5,7 @@ pydantic==2.13.5
 python-dotenv==1.2.4
 # PostgreSQL adapter; database access is separate from the JSON pipeline.
 psycopg[binary]==3.3.6
+# Local read-only HTTP API and its endpoint test client.
+fastapi==0.162.0
+uvicorn==0.54.0
+httpx==0.28.1

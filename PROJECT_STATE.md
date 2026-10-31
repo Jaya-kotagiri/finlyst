@@ -1,5 +1,54 @@
 # Project state
 
+## Phase 4A complete: read-only backend API
+
+Completed on **2026-11-01**. Added a FastAPI layer over the existing PostgreSQL queries;
+no financial calculation, schema migration, import, source rewrite or AI call was added.
+Stop here, before Phase 4B.
+
+- Added `src/api.py`, `src/api_models.py` and `src/api_access.py`. Routes cover snapshot
+  selection, accounts/balances, filtered/paginated transactions, transaction details,
+  summaries, category breakdowns, relationships, obligations and settlements. Responses
+  use strict Pydantic contracts reusing existing financial models and preserve source
+  evidence, durable/legacy IDs, interpretation revisions, null amounts and inferred status.
+- Added pinned FastAPI/Uvicorn dependencies and an explicit HTTPX test-client dependency.
+  Run `python -m src.api`; interactive documentation is at `http://127.0.0.1:8000/docs`.
+  Database configuration reuses environment variables/private `.env.db`; optional project
+  root, loopback host and port are environment-configurable. Startup performs no database
+  write. Snapshot selection remains explicit, including historical revisions.
+- Local-only access requires a loopback peer and accepted Host; cross-origin requests and
+  proxy headers are rejected. CORS is not enabled, Uvicorn proxy trust/access logging are
+  disabled, responses are non-cacheable, and errors redact private details. This is not an
+  authenticated public deployment; trusted local processes can access it.
+- Transaction pagination uses stable existing query order and a 100-record maximum page.
+  It slices the validated snapshot view; it does not add SQL-level pagination or caching.
+  Financial summary semantics remain those of 3D.3, including exclusions and uncertainty.
+
+Verification:
+
+- **332 tests passed, no skips**: all 314 existing tests plus 11 HTTP unit tests and 7
+  isolated PostgreSQL/API integration tests. Covered routes, filters, pagination, empty
+  databases/results, missing IDs, invalid parameters/responses, unavailable/corrupt data,
+  rejected write methods/public hosts/origins/proxies, repeated reads and database immutability.
+- SQL/HTTP parity preserves unknown bank balances/principals, UNASSESSED outstanding,
+  partial repayment overlays and high-confidence **inferred** Dad repayment confirmation.
+  Existing history, read-only transaction, provenance and financial integrity tests pass.
+- Actual API results match SQL and validated JSON: **154 transactions, 85 meanings,
+  2 accounts, 25 category groups, 27 relationships, 8 obligations and 8 settlement views**.
+  Verified all transaction pages and bank/date/treatment/category-null filters. Recognized
+  income remains INR 24,090.00; expense INR 26,903.63. These remain incomplete summaries;
+  3 CLOSED / 5 UNASSESSED receivables and null total outstanding are preserved.
+- A real Uvicorn process launched through the documented command served health, docs,
+  OpenAPI, snapshots and a financial summary on loopback, then was stopped after the test.
+- All **30 application-table contents**, **20 protected files** (including durable mappings
+  and private inputs) and **12 original financial JSON byte comparisons** remain unchanged.
+  Private verification evidence is in ignored `tmp/phase4a/verification.json`; no private
+  evidence or generated financial outputs are included in the checkpoint commit.
+
+README now documents startup, endpoint contracts, explicit snapshot IDs, filters, pagination,
+error codes, environment variables, local security boundary and verification commands.
+No frontend, assistant, write endpoints or later phase was implemented.
+
 ## Phase 3D.3 complete: requested queries and integration
 
 Completed the explicitly requested 3D.3 scope on **2026-10-31**, extending the earlier
