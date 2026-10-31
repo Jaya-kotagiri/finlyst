@@ -1,12 +1,117 @@
 # Finlyst
 
-A deliberately simple local Python rebuild. Slice 0 and both bank converters are complete.
+A deliberately simple local Python finance project with a React workspace. The frontend
+reads validated PostgreSQL snapshots through FastAPI.
 
 Phase 3R.2C adds a persistent durable-ID registry without changing existing financial
 JSON or stage commands. See [DURABLE_IDS.md](DURABLE_IDS.md) for the legacy-ID audit,
 overlap/continuity rules, Python integration and PostgreSQL migration design. Keep the
 private `output/identities/identity_registry.json` across imports and back it up with
 the source artifacts; Git deliberately excludes it.
+
+## Frontend foundation (Phase 4B)
+
+The React + TypeScript + Vite frontend lives in `frontend/`. Accounts is the connected
+page; Dashboard, Transactions, Obligations and Assistant are clearly marked placeholders.
+There is no financial editing, full dashboard or AI assistant in this slice.
+
+Start PostgreSQL if needed with `.venv\Scripts\python.exe -m src.local_postgres start`.
+Then run these commands in **two terminals**. Node.js 22.12+ is required (verified with
+24.18.0). Use `npm.cmd` on Windows PowerShell if script execution policy blocks `npm.ps1`.
+
+Backend, from `D:\finlyst`:
+
+```powershell
+.venv\Scripts\python.exe -m src.api
+```
+
+Frontend:
+
+```powershell
+cd D:\finlyst\frontend
+npm.cmd ci --cache D:\finlyst\.local\npm-cache
+npm.cmd run dev
+```
+
+Open **http://127.0.0.1:5173**. Select a **Statement import** on Accounts to display its
+bank records. The frontend deliberately does not choose the latest import for you.
+Account numbers are masked to their last four characters. Balances are labelled as last
+recorded statement balances with the source transaction/date, not live bank balances.
+Missing balances display **Not available**, never zero. No balances from different dates
+are added into a speculative total. Import timestamps are shown in the browser's local
+time zone; statement dates retain their original calendar date.
+
+The shared shell supplies desktop/mobile navigation, keyboard focus indicators, a skip
+link, loading/empty/error states, retry actions and light/dark themes. Theme defaults to
+the device preference and is the only value saved in localStorage. Financial data stays
+in memory; requests use `no-store`. Changing imports clears old balances and cancels
+pending reads. The other pages contain no mock financial figures. Synthetic financial
+examples exist only in browser tests, never in application bundles.
+
+### Frontend configuration and local access
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VITE_API_URL` | `/api/v1` | Browser API base, required to use the frontend's same origin |
+| `FINLYST_API_TARGET` | `http://127.0.0.1:8000` | Server-side Vite proxy target; plain loopback HTTP origin only |
+
+Set these in the terminal or ignored `frontend/.env.local`, then restart Vite. Vite embeds
+`VITE_*` values at build time: **never put passwords, API keys or database credentials in
+frontend environment variables**. A different backend port is normally configured with
+`FINLYST_API_TARGET`; keep `VITE_API_URL=/api/v1`. Database configuration remains solely
+in the Python backend. Production builds need rebuilding if `VITE_API_URL` changes.
+
+The browser calls the same-origin `/api/v1` proxy. Both Vite development and preview
+bind to loopback, reject foreign Host/Origin, remote peers and forwarded headers, and
+allow only GET/HEAD API requests. After checking the original request, the proxy changes
+Host for the loopback backend and removes the already-verified Origin header. Backend
+access rules remain unchanged; no CORS exceptions or new endpoints were added. Vite's
+file-serving allowlist is restricted to `frontend/`, excluding private backend data.
+
+The workspace remains for a trusted local machine, without public authentication. Do not
+publish it or expose either server through a tunnel. The static build does not contain a
+proxy: local preview supplies it, and a future hosted deployment needs an authenticated
+same-origin serving design. See the [Vite proxy options](https://vite.dev/config/server-options#server-proxy)
+and [preview options](https://vite.dev/config/preview-options#preview-proxy).
+
+### Frontend verification
+
+From `frontend/`:
+
+```powershell
+npm.cmd run build
+npm.cmd run preview
+```
+
+The production preview is at **http://127.0.0.1:4173**, using the same backend target.
+`build` type-checks application/config/tests and generates ignored `frontend/dist/`.
+
+Install the local test browser once, then run the synthetic Chromium suite:
+
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH = 'D:\finlyst\.local\playwright'
+npx.cmd playwright install chromium --only-shell
+npm.cmd test
+```
+
+Tests start their own development server on port 5175 and require neither private data
+nor a running backend. They cover navigation/deep links, mobile/tablet/desktop layouts,
+keyboard access, themes, loading/empty/error states, retry, import switching, exact money
+display, malformed responses and proxy access restrictions. No external AI API is called.
+Browser caches, builds, screenshots and reports are ignored by Git.
+
+To opt into real-data integration verification, first build the frontend, start the
+backend, and choose an existing snapshot UUID from `/api/v1/snapshots`:
+
+```powershell
+$env:FINLYST_TEST_SNAPSHOT = '<existing snapshot UUID>'
+npm.cmd run test:live
+```
+
+This read-only test starts production preview on port 4175 and compares rendered account
+amounts/source IDs with the API. It never imports or modifies records and captures no
+private screenshots or traces. Run existing backend tests from the project root with
+`.venv\Scripts\python.exe -B -m tests.run_database_tests`.
 
 ## Read-only backend API (Phase 4A)
 
@@ -80,7 +185,7 @@ loopback, checks the peer and Host, rejects forwarded headers and cross-origin b
 requests, enables no CORS, disables proxy-header trust and access logging, and marks
 responses `no-store`. Do not expose it through a public proxy/tunnel; public deployment
 requires a separate authenticated design. Other local processes can access it. No write
-endpoints exist. These restrictions intentionally do not add frontend integration yet.
+endpoints exist. These restrictions remain intact with the local frontend proxy above.
 
 Modules are `src/api.py` (routes/startup), `src/api_models.py` (HTTP contracts reusing
 financial schemas) and `src/api_access.py` (local access checks). All database reads use

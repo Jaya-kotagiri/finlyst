@@ -1,5 +1,55 @@
 # Project state
 
+## Phase 4B complete: frontend foundation
+
+Completed on **2026-11-01**. Added `frontend/` using React 19, TypeScript and Vite with
+pinned dependencies and a committed npm lockfile. No existing frontend was present.
+No backend Python, endpoint, financial rule, data schema or database migration changed.
+Stop here, before Phase 4C.
+
+- Added a reusable responsive shell, five-page navigation, light/dark themes, local
+  system typography, focus/skip-link support, reduced-motion styling, loading/empty/error
+  states and retry actions. Dashboard, Transactions, Obligations and Assistant are
+  explicitly placeholders; they show no pretend financial metrics or assistant input.
+- Connected **Accounts** to the existing snapshot/account endpoints through a typed
+  read-only client with consumed-field runtime checks. Import selection is explicit.
+  Account cards preserve exact monetary strings, original statement date/source IDs and
+  unavailable balances. Numbers are masked to their last four digits; balances are
+  labelled recorded rather than live. No totals or new financial calculations were added.
+- Pending requests are aborted on selection/navigation changes; stale results are
+  ignored and previous balances cleared. Only theme is persisted locally. Financial
+  responses remain in memory and uncached; unknown amounts are not coerced to zero.
+- Frontend API URL and backend proxy target are environment-configurable. The loopback
+  Vite dev/preview proxy checks Host, peer, Origin and forwarding headers before adapting
+  the request for the unchanged backend access boundary. No CORS permission or backend
+  endpoint was necessary. File serving is restricted to the frontend directory.
+- README documents two-terminal startup, environment variables, production preview,
+  tests, explicit snapshot selection and the local-only deployment boundary. `.gitignore`
+  now excludes frontend dependencies/builds/browser artifacts while preserving all private
+  input/output/environment exclusions. Test data is synthetic and outside the app bundle.
+
+Verification:
+
+- **332 existing backend tests passed, no skips**, using a disposable PostgreSQL test DB.
+- **18 frontend tests passed** in Chromium: navigation/deep links/history, all status
+  states, retries, malformed data, exact large/negative/null balances, stale request
+  handling, keyboard access, persistent themes, proxy restrictions, and no horizontal
+  overflow at 360px, 768px and 1440px. Light/dark screenshots visually inspected.
+- **1 opt-in live browser test passed** against the built production frontend, the real
+  unchanged FastAPI backend and PostgreSQL. Both account balances and source transaction
+  IDs match API values for the explicitly selected verified snapshot. Real backend
+  response models and JSON/SQL parity checks continue to pass. No private fixture added.
+- Production build and TypeScript checks pass. Dependency installation reports no known
+  vulnerabilities. Only React/ReactDOM are runtime dependencies; no UI framework, router,
+  state library or financial calculation package was introduced.
+- All **30 application-table contents**, **20 protected files** and **12 original financial
+  JSON byte comparisons** remain unchanged. Durable IDs, all 154 bank transactions,
+  85 meanings and uncertainty/settlement evidence are preserved. Private verification
+  evidence and synthetic visual captures remain under ignored `tmp/phase4b/`.
+
+Scope remains foundation only: no full dashboard, financial editing, assistant, API calls
+to OpenAI, PostgreSQL access from the browser or Phase 4C implementation.
+
 ## Phase 4A complete: read-only backend API
 
 Completed on **2026-11-01**. Added a FastAPI layer over the existing PostgreSQL queries;
